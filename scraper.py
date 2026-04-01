@@ -3,7 +3,12 @@ scraper.py — JobBot Async Stealth Scraper
 Módulo de scraping asíncrono con evasión antibot, navegación profunda
 y bloqueo de media para eficiencia de red.
 
-Autor: JobBot Project
+Cambios v1.1:
+  - Browser Chromium compartido en procesar_lote (1 lanzamiento, N contextos)
+  - procesar_dominio acepta browser opcional; si no recibe uno, crea el suyo
+  - Cooldown de scraping separado del cooldown de envío (SCRAPING_COOLDOWN_DAYS)
+  - Import de DDGS movido al top del módulo con ImportError temprano
+
 Python: 3.11+
 Dependencias: playwright, asyncio, urllib (stdlib)
 """
@@ -16,9 +21,15 @@ import random
 import re
 import urllib.parse
 import urllib.robotparser
-from typing import Optional
-from urllib.request import urlopen
+from typing import Optional, Callable
 from urllib.error import URLError
+
+try:
+    from ddgs import DDGS
+except ImportError as exc:
+    raise ImportError(
+        "duckduckgo-search no encontrado. Instalá con: pip install ddgs"
+    ) from exc
 
 from playwright.async_api import (
     async_playwright,
@@ -34,26 +45,26 @@ from db_manager import (
     init_db,
     upsert_empresa,
     insert_contacto,
-    esta_en_cooldown,
     get_empresa_by_dominio,
+    get_connection,
 )
 
 # ---------------------------------------------------------------------------
-# Logging estructurado
+# Logging
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("jobbot.scraper")
 
 # ---------------------------------------------------------------------------
-# Constantes de configuración
+# Constantes
 # ---------------------------------------------------------------------------
-
-# Timeouts en milisegundos (Playwright usa ms)
-NAV_TIMEOUT_MS: int     = 25_000
-WAIT_LOAD_MS: int       = 4_000
-BETWEEN_PAGES_MIN: float = 1.8   # segundos
+NAV_TIMEOUT_MS: int      = 25_000
+WAIT_LOAD_MS: int        = 4_000
+BETWEEN_PAGES_MIN: float = 1.8
 BETWEEN_PAGES_MAX: float = 4.5
 
-# Rutas internas de alta prioridad a buscar proactivamente
+# Cooldown independiente para scraping (re-scrapear es barato, re-enviar no)
+SCRAPING_COOLDOWN_DAYS: int = 7
+
 PRIORITY_PATHS: tuple[str, ...] = (
     "/contacto", "/contactanos", "/contact",
     "/nosotros", "/about", "/sobre-nosotros", "/quienes-somos",
@@ -62,13 +73,11 @@ PRIORITY_PATHS: tuple[str, ...] = (
     "/recursos-humanos", "/rrhh", "/trabaja-con-nosotros", "/empleos",
 )
 
-# Tipos de recursos a bloquear para ahorrar ancho de banda
 BLOCKED_RESOURCE_TYPES: frozenset[str] = frozenset({
     "image", "media", "font", "stylesheet",
     "websocket", "eventsource", "manifest", "other",
 })
 
-# Dominios gigantes a ignorar aunque aparezcan en los resultados
 BLOCKED_DOMAINS: frozenset[str] = frozenset({
     "facebook.com", "instagram.com", "twitter.com", "x.com",
     "tiktok.com", "youtube.com", "google.com", "google.com.ar",
@@ -77,7 +86,6 @@ BLOCKED_DOMAINS: frozenset[str] = frozenset({
     "bumeran.com.ar", "linkedin.com", "randstad.com.ar",
 })
 
-# Pool de User-Agents realistas (Chrome/Firefox en Windows/macOS/Linux)
 USER_AGENTS: tuple[str, ...] = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36 Edg/123.0.0.0",
@@ -88,7 +96,6 @@ USER_AGENTS: tuple[str, ...] = (
     "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
 )
 
-# Viewports realistas para no parecer headless
 VIEWPORTS: tuple[dict[str, int], ...] = (
     {"width": 1920, "height": 1080},
     {"width": 1680, "height": 1050},
@@ -97,21 +104,70 @@ VIEWPORTS: tuple[dict[str, int], ...] = (
     {"width": 1536, "height": 864},
 )
 
+# Args de lanzamiento de Chromium — definidos una sola vez para reutilizar
+_CHROMIUM_ARGS: list[str] = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--disable-gpu",
+    "--disable-setuid-sandbox",
+    "--disable-extensions",
+    "--disable-infobars",
+    "--memory-pressure-off",
+    "--disable-background-networking",
+]
+
+
 # ---------------------------------------------------------------------------
-# Helpers de dominio
+# Cooldown de scraping (separado del cooldown de envío de db_manager)
+# ---------------------------------------------------------------------------
+
+def _esta_en_cooldown_scraping(
+    empresa_id: int,
+    cooldown_days: int = SCRAPING_COOLDOWN_DAYS,
+) -> bool:
+    """
+    Verifica si la empresa fue scrapeada recientemente.
+    Usa fecha_scraping de la tabla empresas, no el historial de envíos.
+
+    Separar este cooldown del de envío permite:
+      - Re-scrapear una empresa para actualizar score/contactos sin enviar nada.
+      - Controlar ambos períodos de forma independiente desde la CLI.
+
+    Args:
+        empresa_id:    ID de la empresa.
+        cooldown_days: Días mínimos entre scrapings. Default: 7.
+
+    Returns:
+        True si fue scrapeada dentro del período de cooldown.
+    """
+    from datetime import datetime, timedelta, timezone
+    cutoff = (
+        datetime.now(tz=timezone.utc) - timedelta(days=cooldown_days)
+    ).isoformat()
+
+    sql = """
+        SELECT 1 FROM empresas
+        WHERE id = ?
+          AND fecha_scraping >= ?
+        LIMIT 1;
+    """
+    with get_connection() as conn:
+        resultado = conn.execute(sql, (empresa_id, cutoff)).fetchone()
+
+    en_cooldown = resultado is not None
+    logger.debug(
+        "Cooldown scraping | empresa_id=%d | en_cooldown=%s | ventana=%d días",
+        empresa_id, en_cooldown, cooldown_days,
+    )
+    return en_cooldown
+
+
+# ---------------------------------------------------------------------------
+# Helpers de dominio (sin cambios)
 # ---------------------------------------------------------------------------
 
 def _normalizar_dominio(url_o_dominio: str) -> str:
-    """
-    Asegura que la entrada tenga esquema https://.
-    Acepta tanto 'empresa.com.ar' como 'https://empresa.com.ar/pagina'.
-
-    Args:
-        url_o_dominio: URL o dominio raw.
-
-    Returns:
-        URL con esquema garantizado.
-    """
     url = url_o_dominio.strip()
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
@@ -119,90 +175,47 @@ def _normalizar_dominio(url_o_dominio: str) -> str:
 
 
 def _extraer_dominio_raiz(url: str) -> str:
-    """
-    Extrae el dominio raíz (netloc) de una URL completa.
-
-    Args:
-        url: URL completa.
-
-    Returns:
-        Dominio sin esquema ni path (ej: 'empresa.com.ar').
-    """
-    parsed = urllib.parse.urlparse(url)
-    return parsed.netloc.lower().lstrip("www.")
+    return urllib.parse.urlparse(url).netloc.lower().lstrip("www.")
 
 
 def _es_dominio_bloqueado(url: str) -> bool:
-    """Verifica si una URL pertenece a un dominio en la lista de bloqueo."""
     dominio = _extraer_dominio_raiz(url)
-    return any(dominio.endswith(blocked) for blocked in BLOCKED_DOMAINS)
+    return any(dominio.endswith(b) for b in BLOCKED_DOMAINS)
 
 
 def _es_enlace_interno(url: str, dominio_base: str) -> bool:
-    """
-    Verifica que una URL pertenezca al mismo dominio que la empresa objetivo.
-
-    Args:
-        url:          URL a evaluar.
-        dominio_base: Dominio raíz de la empresa (sin www).
-
-    Returns:
-        True si el enlace es interno al dominio.
-    """
-    parsed = urllib.parse.urlparse(url)
-    netloc = parsed.netloc.lower().lstrip("www.")
+    netloc = urllib.parse.urlparse(url).netloc.lower().lstrip("www.")
     return netloc == dominio_base or netloc == f"www.{dominio_base}"
 
 
 # ---------------------------------------------------------------------------
-# Verificación de robots.txt
+# robots.txt (sin cambios)
 # ---------------------------------------------------------------------------
 
 def _verificar_robots(url_base: str, user_agent: str = "*") -> bool:
-    """
-    Consulta el robots.txt del dominio y determina si el scraping está permitido.
-    Si el archivo no existe o hay un error de red, asume permiso (fail-open).
-
-    Args:
-        url_base:   URL raíz de la empresa (ej: 'https://empresa.com.ar').
-        user_agent: User-Agent a verificar. Default '*' (any bot).
-
-    Returns:
-        True si se permite el scraping, False si está explícitamente prohibido.
-    """
     robots_url = urllib.parse.urljoin(url_base, "/robots.txt")
     parser = urllib.robotparser.RobotFileParser()
     parser.set_url(robots_url)
-
     try:
         parser.read()
         permitido = parser.can_fetch(user_agent, url_base)
         if not permitido:
             logger.warning("robots.txt bloquea el acceso | url=%s", url_base)
         return permitido
-    except (URLError, OSError, Exception) as exc:
-        # Sin robots.txt o timeout → asumir permitido
+    except Exception as exc:
         logger.debug("robots.txt no disponible, asumiendo permiso | error=%s", exc)
         return True
 
 
 # ---------------------------------------------------------------------------
-# Configuración del contexto Playwright (stealth)
+# Contexto stealth — ahora recibe el Browser ya lanzado
 # ---------------------------------------------------------------------------
 
 async def _crear_contexto_stealth(browser: Browser) -> BrowserContext:
     """
-    Crea un contexto de navegador con configuración stealth:
-    - User-Agent aleatorio del pool
-    - Viewport aleatorio realista
-    - Locale e idioma argentino
-    - Desactivación de webdriver fingerprint vía JS injection
-
-    Args:
-        browser: Instancia de Browser de Playwright.
-
-    Returns:
-        BrowserContext configurado y listo para usar.
+    Crea un contexto aislado (cookies, storage, fingerprint propios)
+    a partir del browser compartido. Cada dominio recibe su propio contexto,
+    pero todos comparten el mismo proceso Chromium.
     """
     ua = random.choice(USER_AGENTS)
     vp = random.choice(VIEWPORTS)
@@ -212,70 +225,44 @@ async def _crear_contexto_stealth(browser: Browser) -> BrowserContext:
         viewport=vp,
         locale="es-AR",
         timezone_id="America/Argentina/Buenos_Aires",
-        # Deshabilitar WebRTC fingerprinting
         permissions=[],
-        # No revelar que es automatización
         java_script_enabled=True,
         accept_downloads=False,
         ignore_https_errors=False,
         extra_http_headers={
-            "Accept-Language":  "es-AR,es;q=0.9,en;q=0.8",
-            "Accept":           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Encoding":  "gzip, deflate, br",
-            "DNT":              "1",
+            "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
+            "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT":             "1",
         },
     )
 
-    # Inyectar JS que elimina los marcadores de automatización de Chromium
     await context.add_init_script("""
-        // Eliminar navigator.webdriver
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined,
-        });
-
-        // Simular plugins de un navegador real (Chrome tiene 3 por defecto)
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => [1, 2, 3],
-        });
-
-        // Simular idiomas reales
-        Object.defineProperty(navigator, 'languages', {
-            get: () => ['es-AR', 'es', 'en'],
-        });
-
-        // Remover chrome.runtime solo si existe (evita errores en Firefox)
-        if (window.chrome) {
-            window.chrome.runtime = {};
-        }
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'plugins',   { get: () => [1, 2, 3] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['es-AR', 'es', 'en'] });
+        if (window.chrome) { window.chrome.runtime = {}; }
     """)
 
-    logger.debug("Contexto stealth creado | ua=%s | viewport=%dx%d", ua, vp["width"], vp["height"])
+    logger.debug("Contexto stealth creado | ua=...%s | viewport=%dx%d", ua[-30:], vp["width"], vp["height"])
     return context
 
 
 # ---------------------------------------------------------------------------
-# Interceptor de recursos (bloqueo de media)
+# Interceptor de recursos (sin cambios)
 # ---------------------------------------------------------------------------
 
 async def _bloquear_recursos_innecesarios(page: Page) -> None:
-    """
-    Registra un interceptor de rutas que aborta requests de tipos no útiles.
-    Ahorra significativamente ancho de banda y tiempo de carga.
-
-    Args:
-        page: Página de Playwright sobre la que aplicar el interceptor.
-    """
     async def _interceptor(route, request):
         if request.resource_type in BLOCKED_RESOURCE_TYPES:
             await route.abort()
         else:
             await route.continue_()
-
     await page.route("**/*", _interceptor)
 
 
 # ---------------------------------------------------------------------------
-# Navegación y extracción de HTML
+# Navegación y extracción (sin cambios)
 # ---------------------------------------------------------------------------
 
 async def _navegar_y_extraer(
@@ -283,65 +270,37 @@ async def _navegar_y_extraer(
     url: str,
     dominio_base: str,
 ) -> tuple[str, list[str]]:
-    """
-    Navega a una URL, espera la carga, extrae el HTML y los enlaces internos.
-
-    Args:
-        page:         Página de Playwright.
-        url:          URL a visitar.
-        dominio_base: Dominio raíz para filtrar enlaces internos.
-
-    Returns:
-        Tupla (html_crudo, lista_de_urls_internas_encontradas).
-        Retorna ('', []) ante cualquier error de navegación.
-    """
     try:
-        response = await page.goto(
-            url,
-            wait_until="domcontentloaded",
-            timeout=NAV_TIMEOUT_MS,
-        )
-
+        response = await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
         if response is None:
-            logger.warning("Sin respuesta del servidor | url=%s", url)
+            return "", []
+        if response.status in (403, 429, 500, 503):
+            logger.warning("HTTP %d recibido, saltando | url=%s", response.status, url)
             return "", []
 
-        status = response.status
-        if status in (403, 429, 500, 503):
-            logger.warning("HTTP %d recibido, saltando | url=%s", status, url)
-            return "", []
-
-        # Pausa humana para evitar detección por velocidad de requests
         await asyncio.sleep(random.uniform(BETWEEN_PAGES_MIN, BETWEEN_PAGES_MAX))
-
         html = await page.content()
 
-        # Extraer todos los href internos del DOM actual
         hrefs: list[str] = await page.eval_on_selector_all(
             "a[href]",
-            """elements => elements
-                .map(el => el.href)
-                .filter(href => href && href.startsWith('http'))
-            """,
+            "elements => elements.map(el => el.href).filter(h => h && h.startsWith('http'))",
         )
-
         enlaces_internos = [
             h for h in hrefs
             if _es_enlace_interno(h, dominio_base) and not _es_dominio_bloqueado(h)
         ]
 
         logger.info(
-            "Página scrapeada | url=%s | status=%d | html=%d chars | links_internos=%d",
-            url, status, len(html), len(enlaces_internos),
+            "Página scrapeada | url=%s | status=%d | html=%d chars | links=%d",
+            url, response.status, len(html), len(enlaces_internos),
         )
         return html, enlaces_internos
 
     except PlaywrightTimeoutError:
-        logger.error("Timeout al navegar | url=%s | timeout=%dms", url, NAV_TIMEOUT_MS)
+        logger.error("Timeout | url=%s | %dms", url, NAV_TIMEOUT_MS)
         return "", []
     except PlaywrightError as exc:
-        # Cubre DNS failures, ERR_CONNECTION_REFUSED, ERR_NAME_NOT_RESOLVED, etc.
-        logger.error("Error de Playwright | url=%s | error=%s", url, str(exc)[:200])
+        logger.error("Error Playwright | url=%s | %s", url, str(exc)[:200])
         return "", []
 
 
@@ -351,56 +310,32 @@ async def _navegar_rutas_prioritarias(
     dominio_base: str,
     enlaces_home: list[str],
 ) -> list[tuple[str, str]]:
-    """
-    Navega proactivamente a rutas de alta probabilidad de contacto.
-    Primero intenta URLs encontradas en la home que matcheen paths prioritarios,
-    luego construye las URLs directamente si no se encontraron.
-
-    Args:
-        page:           Página de Playwright.
-        url_base:       URL raíz de la empresa.
-        dominio_base:   Dominio raíz.
-        enlaces_home:   Links internos encontrados en la home.
-
-    Returns:
-        Lista de tuplas (url_visitada, html_extraído) para las páginas exitosas.
-    """
     resultados: list[tuple[str, str]] = []
     urls_visitadas: set[str] = {url_base}
 
-    # Construir candidatos: primero los links reales de la home,
-    # luego los paths prioritarios construidos directamente
-    candidatos_directos = {
-        urllib.parse.urljoin(url_base, path) for path in PRIORITY_PATHS
-    }
-    # Priorizar links reales encontrados en la home
+    candidatos_directos = {urllib.parse.urljoin(url_base, p) for p in PRIORITY_PATHS}
     links_prioritarios = [
-        url for url in enlaces_home
-        if any(path in url.lower() for path in PRIORITY_PATHS)
+        u for u in enlaces_home
+        if any(p in u.lower() for p in PRIORITY_PATHS)
     ]
-    # Agregar los construidos directamente que no estén ya
-    for url in candidatos_directos:
-        if url not in links_prioritarios:
-            links_prioritarios.append(url)
+    for u in candidatos_directos:
+        if u not in links_prioritarios:
+            links_prioritarios.append(u)
 
     for url in links_prioritarios:
         if url in urls_visitadas:
             continue
         urls_visitadas.add(url)
-
         html, _ = await _navegar_y_extraer(page, url, dominio_base)
         if html:
             resultados.append((url, html))
 
-    logger.info(
-        "Navegación profunda | dominio=%s | páginas_con_contenido=%d",
-        dominio_base, len(resultados),
-    )
+    logger.info("Navegación profunda | dominio=%s | páginas=%d", dominio_base, len(resultados))
     return resultados
 
 
 # ---------------------------------------------------------------------------
-# Función principal del módulo
+# procesar_dominio — ahora acepta un browser externo opcional
 # ---------------------------------------------------------------------------
 
 async def procesar_dominio(
@@ -408,152 +343,127 @@ async def procesar_dominio(
     nombre_empresa: Optional[str] = None,
     rubro: Optional[str] = None,
     min_score_para_log: int = 0,
+    browser: Optional[Browser] = None,          # ← NUEVO
+    forzar_rescraping: bool = False,             # ← NUEVO: ignora cooldown de scraping
 ) -> Optional[ResultadoScoring]:
     """
     Pipeline completo para un dominio: robots check → stealth browser →
     scraping profundo → scoring → persistencia en DB.
 
-    Garantiza el cierre del browser en cualquier escenario de error mediante
-    un bloque finally, previniendo procesos Chromium zombis en el SO.
+    Si se provee `browser`, lo usa directamente (modo batch eficiente).
+    Si no se provee, lanza y destruye su propio proceso Chromium
+    (modo standalone, útil para pruebas de un solo dominio).
 
     Args:
-        url_o_dominio:      Dominio o URL semilla de la empresa.
-        nombre_empresa:     Nombre comercial (opcional, se infiere del dominio si no se provee).
-        rubro:              Sector de actividad conocido de antemano (opcional).
-        min_score_para_log: Score mínimo para loguear la empresa como relevante.
-
-    Returns:
-        ResultadoScoring si el proceso fue exitoso, None si se abortó.
+        url_o_dominio:      Dominio o URL semilla.
+        nombre_empresa:     Nombre comercial (se infiere del dominio si no se provee).
+        rubro:              Sector conocido de antemano (opcional).
+        min_score_para_log: Score mínimo para loguear como relevante.
+        browser:            Browser Playwright compartido. Si es None, crea uno propio.
+        forzar_rescraping:  Si True, ignora el cooldown de scraping (no el de envío).
     """
-    url_base = _normalizar_dominio(url_o_dominio)
+    url_base     = _normalizar_dominio(url_o_dominio)
     dominio_base = _extraer_dominio_raiz(url_base)
-    nombre = nombre_empresa or dominio_base
+    nombre       = nombre_empresa or dominio_base
 
     logger.info("Iniciando procesamiento | dominio=%s", dominio_base)
 
     # ------------------------------------------------------------------
-    # 0. Check de cooldown: no procesar si ya fue contactada recientemente
+    # 0. Cooldown de scraping (independiente del cooldown de envío)
     # ------------------------------------------------------------------
     empresa_existente = await asyncio.to_thread(get_empresa_by_dominio, dominio_base)
-    if empresa_existente:
-        en_cooldown = await asyncio.to_thread(esta_en_cooldown, empresa_existente["id"])
+    if empresa_existente and not forzar_rescraping:
+        en_cooldown = await asyncio.to_thread(
+            _esta_en_cooldown_scraping, empresa_existente["id"]
+        )
         if en_cooldown:
-            logger.info("Empresa en cooldown, omitiendo | dominio=%s", dominio_base)
+            logger.info("Empresa en cooldown de scraping, omitiendo | dominio=%s", dominio_base)
             return None
 
     # ------------------------------------------------------------------
-    # 1. Verificar robots.txt (ética y stealth: si nos dicen que no, nos vamos)
+    # 1. robots.txt
     # ------------------------------------------------------------------
     robots_ok = await asyncio.to_thread(_verificar_robots, url_base)
     if not robots_ok:
-        logger.warning("robots.txt deniega acceso, abortando | dominio=%s", dominio_base)
+        logger.warning("robots.txt deniega acceso | dominio=%s", dominio_base)
         return None
 
     # ------------------------------------------------------------------
-    # 2. Scraping con Playwright
+    # 2. Scraping — usa browser externo si se proveyó, o crea uno propio
     # ------------------------------------------------------------------
-    browser: Optional[Browser] = None
     html_total: str = ""
 
+    async def _scrape_con_browser(b: Browser) -> str:
+        """Lógica de scraping aislada; recibe un browser ya lanzado."""
+        context = await _crear_contexto_stealth(b)
+        try:
+            page = await context.new_page()
+            await _bloquear_recursos_innecesarios(page)
+
+            html_home, enlaces_home = await _navegar_y_extraer(page, url_base, dominio_base)
+            if not html_home:
+                logger.error("No se pudo cargar la home | dominio=%s", dominio_base)
+                return ""
+
+            html_acumulado = html_home
+            for _, html_pagina in await _navegar_rutas_prioritarias(
+                page, url_base, dominio_base, enlaces_home
+            ):
+                html_acumulado += "\n" + html_pagina
+
+            return html_acumulado
+        finally:
+            # El contexto siempre se cierra; el browser sigue vivo si es externo
+            await context.close()
+
     try:
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                headless=True,
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-dev-shm-usage",
-                    "--no-sandbox",
-                    "--disable-gpu",
-                    "--disable-setuid-sandbox",
-                    "--disable-extensions",
-                    "--disable-infobars",
-                    # Reducir fingerprint de memoria
-                    "--memory-pressure-off",
-                    "--disable-background-networking",
-                ],
-            )
-
-            context = await _crear_contexto_stealth(browser)
-
-            try:
-                page = await context.new_page()
-                await _bloquear_recursos_innecesarios(page)
-
-                # --- Home ---
-                html_home, enlaces_home = await _navegar_y_extraer(
-                    page, url_base, dominio_base
+        if browser is not None:
+            # Modo batch: reutilizar el browser compartido
+            html_total = await _scrape_con_browser(browser)
+        else:
+            # Modo standalone: lanzar y destruir Chromium para este dominio
+            async with async_playwright() as pw:
+                own_browser = await pw.chromium.launch(
+                    headless=True, args=_CHROMIUM_ARGS
                 )
-
-                if not html_home:
-                    logger.error(
-                        "No se pudo cargar la home, abortando | dominio=%s", dominio_base
-                    )
-                    return None
-
-                html_total = html_home
-
-                # --- Navegación profunda a páginas de contacto/equipo ---
-                paginas_adicionales = await _navegar_rutas_prioritarias(
-                    page, url_base, dominio_base, enlaces_home
-                )
-                for _, html_pagina in paginas_adicionales:
-                    html_total += "\n" + html_pagina
-
-            finally:
-                # El contexto se cierra siempre, incluso si hay error en scraping
-                await context.close()
+                try:
+                    html_total = await _scrape_con_browser(own_browser)
+                finally:
+                    await own_browser.close()
 
     except PlaywrightError as exc:
-        logger.exception(
-            "Error crítico de Playwright | dominio=%s | error=%s",
-            dominio_base, str(exc)[:300],
-        )
+        logger.exception("Error crítico Playwright | dominio=%s | %s", dominio_base, str(exc)[:300])
         return None
     except Exception as exc:
-        logger.exception(
-            "Error inesperado en scraping | dominio=%s | error=%s",
-            dominio_base, str(exc)[:300],
-        )
+        logger.exception("Error inesperado | dominio=%s | %s", dominio_base, str(exc)[:300])
         return None
-    # El browser.close() es manejado automáticamente por async_playwright()
-    # como context manager — no queda ningún proceso Chromium zombie.
 
     if not html_total.strip():
-        logger.warning("HTML total vacío tras scraping | dominio=%s", dominio_base)
+        logger.warning("HTML total vacío | dominio=%s", dominio_base)
         return None
 
-    logger.info(
-        "HTML acumulado | dominio=%s | total_chars=%d",
-        dominio_base, len(html_total),
-    )
+    logger.info("HTML acumulado | dominio=%s | chars=%d", dominio_base, len(html_total))
 
     # ------------------------------------------------------------------
-    # 3. Scoring (sincrónico — se corre en thread para no bloquear el loop)
+    # 3. Scoring
     # ------------------------------------------------------------------
     resultado: ResultadoScoring = await asyncio.to_thread(
-        analizar_empresa,
-        html_total,
-        dominio_base,
-        True,   # tiene_ssl (ya usamos https://)
+        analizar_empresa, html_total, dominio_base, True,
     )
 
     if resultado.score_total >= min_score_para_log:
         logger.info(
             "Scoring | dominio=%s | score=%d | perfil=%s | contactos=%d | apto=%s",
-            dominio_base,
-            resultado.score_total,
-            resultado.perfil_cv,
-            len(resultado.contactos),
-            resultado.apto_envio_auto,
+            dominio_base, resultado.score_total, resultado.perfil_cv,
+            len(resultado.contactos), resultado.apto_envio_auto,
         )
 
     # ------------------------------------------------------------------
-    # 4. Persistencia en DB (sincrónico — thread para no bloquear el loop)
+    # 4. Persistencia
     # ------------------------------------------------------------------
     empresa_id: int = await asyncio.to_thread(
         upsert_empresa,
-        nombre,
-        dominio_base,
+        nombre, dominio_base,
         rubro or resultado.rubro_detectado,
         resultado.perfil_cv,
         resultado.score_total,
@@ -562,64 +472,80 @@ async def procesar_dominio(
     for contacto in resultado.contactos:
         await asyncio.to_thread(
             insert_contacto,
-            empresa_id,
-            contacto.valor,
-            contacto.tipo,
-            contacto.prioridad,
+            empresa_id, contacto.valor, contacto.tipo, contacto.prioridad,
         )
 
     logger.info(
-        "Empresa persistida | dominio=%s | empresa_id=%d | contactos_guardados=%d",
+        "Empresa persistida | dominio=%s | id=%d | contactos=%d",
         dominio_base, empresa_id, len(resultado.contactos),
     )
-
     return resultado
 
 
 # ---------------------------------------------------------------------------
-# Procesamiento en lote (batch)
+# procesar_lote — 1 browser, N contextos aislados
 # ---------------------------------------------------------------------------
 
 async def procesar_lote(
     dominios: list[str],
     concurrencia: int = 3,
     min_score_para_log: int = 30,
+    forzar_rescraping: bool = False,
 ) -> dict[str, Optional[ResultadoScoring]]:
     """
-    Procesa una lista de dominios con concurrencia controlada usando un Semaphore.
-    Evita saturar la red y disparar rate limits en sitios con WAF compartido.
+    Procesa una lista de dominios con concurrencia controlada.
+
+    Lanza UN solo proceso Chromium para todo el lote y crea un contexto
+    aislado por dominio. Comparado con la versión anterior (1 proceso por
+    dominio), el ahorro en tiempo de startup es de ~2-4 segundos por dominio.
+
+    Con 100 dominios y concurrencia=3:
+      - Antes: 100 lanzamientos de Chromium en secuencia dentro del semáforo
+      - Ahora: 1 lanzamiento, 100 contextos (3 concurrentes)
 
     Args:
-        dominios:           Lista de dominios/URLs a procesar.
-        concurrencia:       Máximo de dominios procesados en paralelo. Default 3.
+        dominios:          Lista de dominios/URLs a procesar.
+        concurrencia:      Máximo de dominios en paralelo. Default 3.
         min_score_para_log: Score mínimo para loguear como relevante.
+        forzar_rescraping:  Si True, ignora cooldown de scraping en todos.
 
     Returns:
         Dict {dominio: ResultadoScoring | None}.
     """
-    semaforo = asyncio.Semaphore(concurrencia)
+    semaforo  = asyncio.Semaphore(concurrencia)
     resultados: dict[str, Optional[ResultadoScoring]] = {}
 
-    async def _tarea(dominio: str) -> None:
-        async with semaforo:
-            # Jitter entre tareas para distribuir las requests en el tiempo
-            await asyncio.sleep(random.uniform(0.5, 2.5))
-            resultado = await procesar_dominio(
-                dominio,
-                min_score_para_log=min_score_para_log,
-            )
-            resultados[dominio] = resultado
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True, args=_CHROMIUM_ARGS)
+        logger.info(
+            "Browser Chromium lanzado para lote | dominios=%d | concurrencia=%d",
+            len(dominios), concurrencia,
+        )
 
-    tareas = [asyncio.create_task(_tarea(d)) for d in dominios]
-    await asyncio.gather(*tareas, return_exceptions=True)
+        async def _tarea(dominio: str) -> None:
+            async with semaforo:
+                await asyncio.sleep(random.uniform(0.5, 2.5))  # jitter
+                resultado = await procesar_dominio(
+                    dominio,
+                    min_score_para_log=min_score_para_log,
+                    browser=browser,                    # ← browser compartido
+                    forzar_rescraping=forzar_rescraping,
+                )
+                resultados[dominio] = resultado
 
-    exitosos   = sum(1 for v in resultados.values() if v is not None)
-    omitidos   = len(dominios) - exitosos
-    aptos      = sum(1 for v in resultados.values() if v and v.apto_envio_auto)
+        await asyncio.gather(
+            *[asyncio.create_task(_tarea(d)) for d in dominios],
+            return_exceptions=True,
+        )
 
+        await browser.close()
+        logger.info("Browser Chromium cerrado.")
+
+    exitosos = sum(1 for v in resultados.values() if v is not None)
+    aptos    = sum(1 for v in resultados.values() if v and v.apto_envio_auto)
     logger.info(
         "Lote completado | total=%d | exitosos=%d | omitidos=%d | aptos_envio=%d",
-        len(dominios), exitosos, omitidos, aptos,
+        len(dominios), exitosos, len(dominios) - exitosos, aptos,
     )
     return resultados
 
@@ -634,8 +560,6 @@ if __name__ == "__main__":
         format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
-
-    # Inicializar la base de datos antes de correr el scraper
     init_db()
 
     dominios_prueba = [
@@ -654,8 +578,7 @@ if __name__ == "__main__":
             print(f"  Perfil CV : {res.perfil_cv}")
             print(f"  Score     : {res.score_total}")
             print(f"  Apto envío: {res.apto_envio_auto}")
-            print(f"  Contactos :")
             for c in res.contactos:
                 print(f"    [{c.tipo:8}] P{c.prioridad} | +{c.puntos}pts | {c.valor}")
         else:
-            print(f"\n  {dominio}: omitido (robots.txt, cooldown o error de red)")
+            print(f"\n  {dominio}: omitido")

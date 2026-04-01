@@ -52,7 +52,7 @@ from db_manager import (
     upsert_empresa,
 )
 from mailer import procesar_envios_pendientes
-from scraper import procesar_dominio
+from scraper import procesar_dominio, procesar_lote
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +77,7 @@ PORTALES_EXCLUIDOS: frozenset[str] = frozenset({
     "buscojobs.com", "buscojobs.com.ar",
     "bacap.com.ar", "revistacentral.com.ar",
     "domain.com", "example.com", "abc.xyz",
+    "edu.ar", "mdp.edu.ar", "ufasta.edu.ar", "caece.edu.ar", "atlantida.edu.ar",
 })
 
 RUBROS_DEFAULT: list[str] = [
@@ -486,15 +487,11 @@ async def recolectar_urls_semilla(
     """
     logger_fn = logging.getLogger("jobbot.dork")
 
-    # Construir el bloque de exclusiones (DDG soporta hasta ~12 operadores -site
-    # antes de que las queries se vuelvan ineficaces; tomar los más relevantes)
-    portales_sorted = sorted(PORTALES_EXCLUIDOS)[:12]
-    exclusiones     = " ".join(f"-site:{p}" for p in portales_sorted)
 
     dominios_insertados = 0
 
     for idx, rubro in enumerate(rubros, start=1):
-        query = f'site:.ar "{zona}" {rubro} (intext:"rrhh" OR intext:"recursos humanos" OR intext:"trabaja con nosotros" OR intext:"contacto") {exclusiones}'
+        query = f'site:ar "{zona}" {rubro} (contacto OR rrhh OR empleos)'
         logger_fn.info(
             "Dorking [%d/%d] | rubro=%s", idx, len(rubros), rubro
         )
@@ -581,8 +578,7 @@ async def pipeline_dork(args: argparse.Namespace, estado: EstadoBot) -> None:
 async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
     """
     Lee todos los dominios de la DB y ejecuta el scraper asíncrono con
-    concurrencia controlada por Semaphore. Actualiza el dashboard en tiempo
-    real conforme cada dominio es procesado.
+    concurrencia controlada por Semaphore.
     """
     logger_fn = logging.getLogger("jobbot.main")
     estado.fase_actual = "🔍 Cargando dominios desde DB…"
@@ -601,46 +597,24 @@ async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
     estado.scraping_procesados = 0
     estado.fase_actual         = f"🔍 Scrapeando {len(dominios)} dominios…"
 
-    semaforo = asyncio.Semaphore(args.concurrencia)
+    resultados = await procesar_lote(
+        dominios,
+        concurrencia=args.concurrencia,
+        forzar_rescraping=getattr(args, "forzar_rescraping", False),
+    )
 
-    async def _tarea(dominio: str) -> None:
-        async with semaforo:
-            estado.upsert_scraping_row(dominio, 0, "–", "Scrapeando")
-            try:
-                resultado = await procesar_dominio(
+    with estado._lock:
+        for dominio, resultado in resultados.items():
+            estado.scraping_procesados += 1
+            if resultado:
+                estado.upsert_scraping_row(
                     dominio,
-                    min_score_para_log=0,
+                    resultado.score_total,
+                    resultado.perfil_cv,
+                    "OK",
                 )
-                if resultado:
-                    estado.upsert_scraping_row(
-                        dominio,
-                        resultado.score_total,
-                        resultado.perfil_cv,
-                        "OK",
-                    )
-                    logger_fn.info(
-                        "Scraped | %s | score=%d | perfil=%s | apto=%s",
-                        dominio,
-                        resultado.score_total,
-                        resultado.perfil_cv,
-                        resultado.apto_envio_auto,
-                    )
-                else:
-                    estado.upsert_scraping_row(dominio, 0, "–", "Omitido")
-
-            except Exception as exc:
-                logger_fn.error(
-                    "Error scraping | dominio=%s | %s", dominio, str(exc)[:100]
-                )
-                estado.upsert_scraping_row(dominio, 0, "–", "Error")
-
-            finally:
-                # Incremento atómico del contador de progreso
-                with estado._lock:
-                    estado.scraping_procesados += 1
-
-    tareas = [asyncio.create_task(_tarea(d)) for d in dominios]
-    await asyncio.gather(*tareas, return_exceptions=True)
+            else:
+                estado.upsert_scraping_row(dominio, 0, "–", "Omitido/Error")
 
     exitosos = sum(1 for r in estado.scraping_rows if r.get("estado") == "OK")
     estado.fase_actual = (
@@ -793,6 +767,14 @@ def _build_parser() -> argparse.ArgumentParser:
             "Ej: --rubros 'logística' 'estudio contable'"
         ),
     )
+
+    parser.add_argument(
+        "--forzar-rescraping",
+        action="store_true",
+        dest="forzar_rescraping",
+        help="Ignorar cooldown de scraping y re-procesar todos los dominios",
+    )
+    
     parser.add_argument(
         "--limite-dork",
         type=int,

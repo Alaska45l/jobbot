@@ -12,3 +12,8 @@ start_bot.sh
 
 # Currículums personales
 cvs/*.pdf
+
+        # Purgar cualquier correo que venga de una institución educativa
+        if ".edu." in email_completo or email_completo.endswith(".edu"):
+            logger.debug("Correo académico ignorado | %s", email_completo)
+            continue

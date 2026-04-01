@@ -1,0 +1,14 @@
+# Entorno virtual y caché de Python
+venv/
+__pycache__/
+*.pyc
+
+# Base de datos local
+jobbot.db
+jobbot.db-journal
+
+# Archivos con credenciales reales
+start_bot.sh
+
+# Currículums personales
+cvs/*.pdf

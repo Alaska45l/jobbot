@@ -1,0 +1,395 @@
+# ============================================================
+# BLOQUE 1 — TECNOLOGÍA / SOFTWARE / IT
+# Polo TIC de MdP: ~2.400 empleados, decenas de empresas activas
+# Fuente: ATICMA (Asociación TIC )
+# ============================================================
+
+# --- Términos genéricos ---
+desarrollo de software 
+empresa de sistemas 
+agencia de marketing digital 
+soporte técnico empresas 
+servicios informáticos 
+consultora IT 
+integrador de sistemas 
+software a medida 
+empresa SaaS 
+startup tecnológica 
+desarrollo web 
+aplicaciones móviles 
+ecommerce B2B 
+ciberseguridad empresas 
+inteligencia artificial 
+automatización procesos 
+soluciones cloud 
+infraestructura IT 
+datacenter 
+robótica 
+videojuegos empresa 
+software gestión comercial 
+software agropecuario 
+
+# --- Empresas TIC reales de MdP (socios ATICMA y otras conocidas) ---
+Infosis software gestión
+Grupo Nucleo tecnología
+Easycommerce soluciones ecommerce
+Advenio Software 
+Globant oficina
+Deitres soluciones tecnológicas
+Rollpix infraestructura IT
+Making Sense 
+Nextware software
+Ciarbis Soluciones 
+Medeatec 
+Coned tecnología
+Bykom software gestión
+NEO Software 
+ITZeta sistemas
+MAT12 desarrollo web
+G4 Soluciones IT 
+Albor software agropecuario 
+Whanau Consultoría 
+Datcom Soluciones 
+Neutron tecnología
+Camet Robótica 
+Agrosistemas software
+Accenture oficina
+TuAlmacen ecommerce
+BQS Greentech 
+Punto Gestión Tango 
+Servicom Soluciones Tecnológicas 
+Grupo ESI SRL sistemas gestión
+Andromeda tecnología
+IT Oeste desarrollo software
+Chispa estudio diseño digital 
+Ecolan Datacenter 
+Attic herramientas informáticas
+
+
+# ============================================================
+# BLOQUE 2 — INDUSTRIA PESQUERA Y NAVAL
+# Puerto de MdP: flota más grande del Atlántico Sur
+# ============================================================
+
+# --- Términos genéricos ---
+empresa pesquera 
+frigorífico pesquero 
+procesadora de pescado 
+industria naval 
+astillero 
+taller naval 
+carpintería naval 
+exportadora de mariscos 
+armadora pesquera 
+procesamiento calamar 
+harina de pescado 
+exportación langostino 
+proveedor flota pesquera 
+empresa de servicios portuarios 
+empresa de desguace naval 
+
+# --- Empresas pesqueras / navales reales ---
+Maronti Argentina SA 
+PRANAS SA pesquera
+Grupo Polo Sur exportadora
+27 de Noviembre SA pescados mariscos
+Pesquera del Este 
+Argen-Pesca SA 
+BP San Jorge SA pesquera
+Astillero De Angelis 
+Contessi y Cia Astillero Puerto 
+Traweluwn pesquera
+El Corsario pesquera
+Fidepes Coop 
+Power Valves naval
+Distribuidora El Faro combustibles puerto 
+Noah Pesquera 
+Servicios Portuarios Integrados Astilleros 
+Solimeno SA industria
+Pesquera Mahmud 
+
+
+# ============================================================
+# BLOQUE 3 — CONSTRUCCIÓN Y DESARROLLO INMOBILIARIO
+# ============================================================
+
+# --- Términos genéricos ---
+empresa constructora 
+desarrolladora inmobiliaria 
+constructora obras civiles 
+dirección de obra 
+empresa construcción industrial 
+obras viales 
+ingeniería civil 
+pisos industriales 
+construcción llave en mano 
+instalaciones eléctricas industriales 
+refacción y ampliación empresas 
+fabricación prefabricados 
+
+# --- Empresas constructoras reales ---
+Consca SA constructora
+Betón SRL constructora
+Fabbri Hermanos SA construcción
+Estevez e Hijos constructora 
+CAMS Desarrollos 
+Murano Edificios desarrolladora
+Ibiplata SA constructora
+Constructora Feles SA 
+Bordigoni y CIA SRL construcción
+Construman SA obras
+Baldoni e Hijos construcción
+Lembi y CIA construcción
+Emcoserv SA 
+
+
+# ============================================================
+# BLOQUE 4 — TRANSPORTE Y LOGÍSTICA
+# ============================================================
+
+# --- Términos genéricos ---
+empresa de transporte de carga 
+logística y distribución 
+distribuidora mayorista 
+transporte frigorífico 
+transporte de contenedores 
+depósito fiscal 
+parque logístico 
+distribución de mercadería zona 
+empresa de encomiendas 
+flota de transporte 
+
+# --- Empresas de transporte reales ---
+Transportes Scordina SA logística
+Rabbione transporte 
+Expreso Losa distribución
+Tarrés transporte cargas 
+Soumar Logística distribución
+Parque Logístico De León Medina 
+
+
+# ============================================================
+# BLOQUE 5 — SALUD PRIVADA
+# MdP tiene uno de los ecosistemas de salud privada más
+# desarrollados del interior bonaerense
+# ============================================================
+
+# --- Términos genéricos ---
+clínica privada 
+sanatorio 
+centro médico 
+laboratorio de análisis clínicos 
+centro de diagnóstico por imágenes 
+medicina prepaga 
+centro oftalmológico 
+clínica odontológica 
+centro de rehabilitación kinesiología 
+centro de salud mental 
+clínica de maternidad 
+guardia médica privada 
+centro de reproducción asistida 
+empresa de insumos médicos 
+
+# --- Clínicas y sanatorios reales ---
+Sanatorio Belgrano 
+Clínica 25 de Mayo 
+EMHSA Sanatorio Central 
+Clínica Santa Lucía jujuy
+Instituto Médico Bolívar 
+Clínica Privada Pueyrredón 
+Sanatorio Antártida 
+Policlínica Gascón 
+Centro de Estudios Digestivos CED 
+Clínica del Niño y la Madre 
+Clínica de Fracturas y Ortopedia 
+SAMI prepaga Centro Médico
+Thema salud prepaga 
+Bramed Salud 
+Centro Oftalmológico 
+Traumatólogos Asociados 
+Clínica Neuropsiquiátrica Atlántica 
+IGM Instituto Ginecología 
+Diagnóstico Médico por Imágenes 
+
+
+# ============================================================
+# BLOQUE 6 — ADMINISTRACIÓN, ESTUDIOS Y SERVICIOS PROFESIONALES
+# ============================================================
+
+# --- Términos genéricos ---
+estudio contable 
+estudio jurídico 
+administración de consorcios 
+agencia de seguros 
+escribanía 
+gestoría automotor 
+asesoría impositiva 
+estudio de auditoría 
+empresa de recursos humanos 
+consultora de RRHH 
+agencia de cobranzas 
+empresa de vigilancia y seguridad privada 
+empresa de limpieza comercial e industrial 
+agencia de empleo 
+despacho de aduana 
+agencia de seguros generales 
+asesor inmobiliario corporativo 
+
+
+# ============================================================
+# BLOQUE 7 — INDUSTRIA MANUFACTURERA Y PARQUE INDUSTRIAL
+# Parque Industrial General Savio — zona activa con decenas
+# de pymes industriales
+# ============================================================
+
+# --- Términos genéricos ---
+fábrica Parque Industrial 
+empresa textil 
+metalúrgica 
+empresa plásticos 
+industria alimentaria 
+empresa de packaging 
+empresa metalmecánica 
+fabricación equipos industriales 
+industria química 
+empresa de impresión gráfica 
+fabricante muebles 
+empresa de refrigeración industrial 
+fábrica de calzado 
+empresa de pinturas 
+frigorífico carnes 
+manufactura industrial 
+
+# --- Empresas industriales reales ---
+Grupo Solimeno industria
+De León Medina materiales construcción 
+Servisteel 
+
+
+# ============================================================
+# BLOQUE 8 — COMERCIO Y DISTRIBUCIÓN
+# ============================================================
+
+# --- Términos genéricos ---
+distribuidora de alimentos 
+distribuidora de bebidas 
+mayorista de indumentaria 
+supermercado independiente 
+concesionaria de autos 
+electrodomésticos mayorista 
+ferretería mayorista 
+corralón de materiales 
+empresa de venta de insumos 
+distribuidor de productos congelados 
+importadora exportadora 
+
+# --- Empresas comerciales reales ---
+Torres y Liva distribuidores 
+Cerrosud materiales construcción 
+
+
+# ============================================================
+# BLOQUE 9 — TURISMO, HOTELERÍA Y GASTRONOMÍA
+# Sector con gran estructura administrativa y personal de temporada
+# ============================================================
+
+# --- Términos genéricos ---
+hotel recursos humanos
+complejo hotelero 
+agencia de viajes 
+catering empresarial 
+empresa de eventos corporativos 
+casino empresa
+restaurant con salón de eventos 
+empresa de seguridad hotelera 
+spa resort 
+cadena hotelera empleos
+
+
+# ============================================================
+# BLOQUE 10 — EDUCACIÓN Y CAPACITACIÓN
+# ============================================================
+
+# --- Términos genéricos ---
+instituto de idiomas 
+capacitación corporativa 
+academia de programación 
+centro de formación profesional 
+instituto privado de diseño 
+escuela de negocios 
+capacitadora de oficios 
+instituto de inglés corporativo
+
+
+# ============================================================
+# BLOQUE 11 — ENERGÍA, MEDIO AMBIENTE Y TELECOMUNICACIONES
+# ============================================================
+
+# --- Términos genéricos ---
+proveedor de internet empresarial 
+empresa de fibra óptica 
+empresa de energías renovables 
+empresa solar fotovoltaica 
+consultora ambiental 
+empresa tratamiento residuos 
+instalación de cámaras de seguridad 
+domótica empresas
+empresa telecomunicaciones 
+CCTV alarmas monitoreo 
+
+
+# ============================================================
+# BLOQUE 12 — INMOBILIARIAS LOCALES
+# tiene más de 400 inmobiliarias activas
+# ============================================================
+
+# --- Términos genéricos ---
+inmobiliaria 
+administración de propiedades 
+tasación inmuebles 
+agencia inmobiliaria alquileres temporarios 
+inmobiliaria departamentos centro
+
+# --- Inmobiliarias con presencia digital ---
+La Pérgola Propiedades 
+REMAX oficina
+
+
+# ============================================================
+# BLOQUE 13 — AGRO Y SECTOR RURAL (zona de influencia)
+# Cinturón productivo entre MdP, Batán y General Pueyrredon
+# ============================================================
+
+# --- Términos genéricos ---
+empresa agrícola General Pueyrredon
+agroquímica zona
+vivero empresa
+empresa horticultura 
+acopiador granos zona
+empresa veterinaria 
+distribuidora agropecuaria 
+
+
+# ============================================================
+# BLOQUE 14 — COMBOS LONG TAIL (alta especificidad OSINT)
+# Estas búsquedas llegan a páginas que los genéricos no
+# encuentran: secciones "Trabaja con nosotros", contactos de
+# RRHH, pies de página con emails, etc.
+# ============================================================
+
+empresa con RRHH 
+empresa con departamento de sistemas 
+empresa con área de IT 
+empresa con personal administrativo 
+empresa en crecimiento contratar 
+empresa trabaja remoto 
+empresa busca programador 
+empresa busca administrativo 
+empresa exportadora rrhh
+empresa tecnología empleos 
+empresa manufactura contratar 
+empresa salud tecnología 
+empresa logística sistemas 
+empresa pyme contrata 
+reclutamiento empresa
+selección de personal empresa

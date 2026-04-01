@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import random
 import re
 import urllib.parse
 from collections import deque
@@ -511,7 +512,9 @@ async def recolectar_urls_semilla(
             except Exception as exc:
                 logger_fn.error("Fallo semilla | %s | %s", dominio, str(exc)[:80])
 
-        await asyncio.sleep(1.5)
+        pausa = random.uniform(3.5, 7.5)
+        logger_fn.debug("Anti-ban: pausa %.1fs antes del próximo rubro", pausa)
+        await asyncio.sleep(pausa)
 
     logger_fn.info("Dorking finalizado | semillas=%d", insertados)
     return insertados
@@ -519,8 +522,30 @@ async def recolectar_urls_semilla(
 
 async def pipeline_dork(args: argparse.Namespace, estado: EstadoBot) -> None:
     estado.fase_actual = "Iniciando DuckDuckGo Dorking…"
+    logger_fn = logging.getLogger("jobbot.dork")
+
+    # 1. Armar lista final de rubros (CLI + archivo)
+    rubros_finales = list(args.rubros)
+    rubros_file = getattr(args, "rubros_file", None)
+    if rubros_file:
+        try:
+            with open(rubros_file, "r", encoding="utf-8") as f:
+                rubros_archivo = [
+                    line.strip() for line in f
+                    if line.strip() and not line.startswith("#")
+                ]
+                rubros_finales.extend(rubros_archivo)
+                rubros_finales = list(dict.fromkeys(rubros_finales))  # dedup, preservar orden
+            logger_fn.info("Cargados %d rubros desde %s", len(rubros_archivo), rubros_file)
+        except Exception as e:
+            logger_fn.error("Error leyendo %s: %s", rubros_file, e)
+
+    # 2. Ejecutar dorking con la lista combinada
     n = await recolectar_urls_semilla(
-        rubros=args.rubros, zona="Mar del Plata", limite=args.limite_dork, estado=estado,
+        rubros=rubros_finales,
+        zona="Mar del Plata",
+        limite=args.limite_dork,
+        estado=estado,
     )
     estado.fase_actual = f"Dorking completo — {n} dominios semilla en DB"
 
@@ -670,7 +695,10 @@ def _build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--mail",   action="store_true")
     mode.add_argument("--auto",   action="store_true")
 
-    parser.add_argument("--rubros",     nargs="+", default=RUBROS_DEFAULT, metavar="RUBRO")
+    parser.add_argument("--rubros",      nargs="+", default=RUBROS_DEFAULT, metavar="RUBRO")
+    parser.add_argument("--rubros-file", type=str,  default=None, dest="rubros_file",
+                        metavar="FILE",
+                        help="Archivo .txt con palabras clave (una por línea, # para comentarios)")
     parser.add_argument("--limite-dork",type=int,  default=30, dest="limite_dork")
     parser.add_argument("--concurrencia",type=int, default=3)
     parser.add_argument("--min-score",  type=int,  default=55, dest="min_score")

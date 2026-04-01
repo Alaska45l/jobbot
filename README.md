@@ -13,6 +13,22 @@
 
 JobBot es un pipeline asíncrono de prospección y contacto automatizado diseñado para búsquedas laborales dirigidas. Utiliza técnicas de dorking para recolección de objetivos, scraping sigiloso para extracción de datos de contacto (Management/HR) y un motor SMTP con rate-limiting para el envío de currículums contextualizados según un sistema de Lead Scoring.
 
+## <img src="https://api.iconify.design/material-symbols/lightbulb.svg?color=%23007acc" width="24" height="24" align="center"> Why JobBot? (Architecture & Philosophy)
+
+JobBot nace de una necesidad real y de la frustración con el ecosistema actual de reclutamiento. Después de meses de enviar solicitudes a través de portales tradicionales (ZonaJobs, Randstad, Bumeran, LinkedIn) con tasas de respuesta bajísimas, decidí cambiar la estrategia y volver a lo básico: entregar el CV directamente en la puerta de la empresa. Pero en lugar de hacerlo a pie una tarde de lluvia, decidí automatizarlo.
+
+Al buscar herramientas de automatización de Cold Emailing u OSINT en GitHub, me encontré con un problema: casi todos los repositorios actuales son simples "wrappers" que requieren tarjetas de crédito para pagar costosas APIs de IA generativa (OpenAI, Claude) solo para leer un HTML básico.
+
+Por eso construí JobBot bajo una filosofía técnica estricta:
+
+* Determinismo sobre Alucinación: El bot no utiliza LLMs para tareas de clasificación. Emplea un motor léxico propio en Python puro con expresiones regulares y diccionarios ponderados. Evalúa reglas estrictas para decidir qué CV enviar sin equivocarse.
+
+* Costo Cero y Eficiencia: Arquitectura asíncrona (asyncio + Playwright) diseñada para consumir recursos mínimos. Un solo proceso de Chromium maneja múltiples contextos, permitiendo que el orquestador corra localmente sin gastar un centavo en tokens de API.
+
+* OSINT de "Delicada Fuerza Bruta": En lugar de hacer spam ciego, el bot utiliza búsquedas inteligentes para mapear la red de empresas locales (Mar del Plata), sortea filtros, raspa correos de Recursos Humanos y aplica rate-limiting (Jitter) para cuidar la reputación del servidor SMTP.
+
+JobBot es la digitalización de caminar la calle entregando currículums, convertido en un pipeline asíncrono.
+
 ## <img src="https://api.iconify.design/material-symbols/account-tree.svg?color=%23007acc" width="24" height="24" align="center"> Arquitectura y Características
 
 * **Dorking Engine**: Automatiza consultas avanzadas (operadores site:, intext:) en motores de búsqueda para sembrar la base de datos con dominios relevantes por zona y rubro.

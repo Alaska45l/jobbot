@@ -253,7 +253,7 @@ def insert_contacto(
     Raises:
         ValueError: Si los parámetros son inválidos.
     """
-    if tipo not in ("RRHH", "General", "LinkedIn"):
+    if tipo not in ("RRHH", "General", "LinkedIn", "WhatsApp"):
         raise ValueError(f"Tipo de contacto inválido: '{tipo}'.")
     if prioridad not in range(4):
         raise ValueError(f"Prioridad fuera de rango: {prioridad}.")

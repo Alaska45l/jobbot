@@ -659,6 +659,17 @@ async def pipeline_mail(args: argparse.Namespace, estado: EstadoBot) -> None:
     logger_fn.info("Campaña email finalizada | %s", metricas)
 
 
+async def pipeline_wa(args: argparse.Namespace, estado: EstadoBot) -> None:
+    from wa_sender import procesar_envios_wa
+    estado.fase_actual = "Campaña WhatsApp en progreso…"
+    
+    metricas = await procesar_envios_wa(
+        limite=getattr(args, "limite", 10),
+        dry_run=getattr(args, "dry_run", False),
+        headless=getattr(args, "headless", False)
+    )
+    estado.fase_actual = f"Campaña WA finalizada — Enviados: {metricas['enviados']} | Rebotados: {metricas['rebotados']}"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Pipeline: Auto
 # ─────────────────────────────────────────────────────────────────────────────
@@ -694,6 +705,7 @@ def _build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--scrape", action="store_true")
     mode.add_argument("--mail",   action="store_true")
     mode.add_argument("--auto",   action="store_true")
+    mode.add_argument("--wa",     action="store_true")
 
     parser.add_argument("--rubros",      nargs="+", default=RUBROS_DEFAULT, metavar="RUBRO")
     parser.add_argument("--rubros-file", type=str,  default=None, dest="rubros_file",
@@ -703,6 +715,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--concurrencia",type=int, default=3)
     parser.add_argument("--min-score",  type=int,  default=55, dest="min_score")
     parser.add_argument("--dry-run",    action="store_true", dest="dry_run")
+    parser.add_argument("--limite", type=int, default=10, help="Límite de envíos WA")
+    parser.add_argument("--headless", action="store_true", help="Modo WA sin ventana")
     parser.add_argument(
         "--forzar-rescraping", action="store_true", dest="forzar_rescraping",
         help="Ignorar cooldown de scraping y re-procesar todos los dominios",
@@ -720,7 +734,7 @@ async def _async_main(args: argparse.Namespace) -> None:
     _configurar_logging(estado.log_buffer, estado._lock)
 
     logger_fn = logging.getLogger("jobbot.main")
-    modo = next(m for m in ("dork","scrape","mail","auto") if getattr(args, m))
+    modo = next(m for m in ("dork","scrape","mail","wa","auto") if getattr(args, m))
     logger_fn.info("JobBot v1.2 | modo=%s | dry_run=%s", modo, getattr(args, "dry_run", False))
 
     stop_event = asyncio.Event()
@@ -730,7 +744,7 @@ async def _async_main(args: argparse.Namespace) -> None:
             try:
                 live.update(render_dashboard(estado), refresh=True)
             except Exception:
-                pass
+                pass_async_main
             await asyncio.sleep(DASHBOARD_REFRESH_S)
 
     with Live(render_dashboard(estado), auto_refresh=False, screen=False, redirect_stderr=False) as live:
@@ -739,6 +753,7 @@ async def _async_main(args: argparse.Namespace) -> None:
             if args.dork:    await pipeline_dork(args, estado)
             elif args.scrape: await pipeline_scrape(args, estado)
             elif args.mail:   await pipeline_mail(args, estado)
+            elif args.wa:     await pipeline_wa(args, estado)
             elif args.auto:   await pipeline_auto(args, estado)
         finally:
             stop_event.set()
@@ -762,7 +777,7 @@ def main() -> None:
     args   = parser.parse_args()
 
     if args.dry_run and not (args.mail or args.auto):
-        parser.error("--dry-run solo tiene efecto con --mail o --auto")
+        parser.error("--dry-run solo tiene efecto con --mail, --wa o --auto")
     if not (1 <= args.concurrencia <= 10):
         parser.error("--concurrencia debe estar entre 1 y 10")
 

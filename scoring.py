@@ -17,6 +17,7 @@ import re
 import logging
 from dataclasses import dataclass, field
 from typing import Final
+from wa_sender import extraer_numeros_whatsapp
 
 logger = logging.getLogger("jobbot.scoring")
 
@@ -211,6 +212,26 @@ def analizar_empresa(
         contactos.append(ContactoDetectado(valor=email_completo, tipo=tipo, prioridad=prioridad, puntos=puntos))
         score += puntos
         logger.debug("Email | %s | tipo=%s | +%d pts", email_completo, tipo, puntos)
+
+# ------------------------------------------------------------------
+    # 1.5 WhatsApp
+    # ------------------------------------------------------------------
+    numeros_wa = extraer_numeros_whatsapp(html)
+
+    # Score flat: +35 pts si la empresa tiene WA, independiente de la cantidad
+    if numeros_wa:
+        score += 35
+        logger.debug("WhatsApp | %d números encontrados | +35 pts flat", len(numeros_wa))
+
+    # Persistir solo los primeros 3 para no saturar la tabla contactos
+    for numero in numeros_wa[:3]:
+        contactos.append(ContactoDetectado(
+            valor=numero,
+            tipo="WhatsApp",
+            prioridad=1,
+            puntos=0,   # el score ya se sumó arriba, una sola vez
+        ))
+    
 
     # ------------------------------------------------------------------
     # 2. LinkedIn — Personas

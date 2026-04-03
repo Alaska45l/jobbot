@@ -6,14 +6,10 @@ __pycache__/
 # Base de datos local
 jobbot.db
 jobbot.db-journal
+wa_profile/
 
 # Archivos con credenciales reales
 start_bot.sh
 
 # Currículums personales
 cvs/*.pdf
-
-        # Purgar cualquier correo que venga de una institución educativa
-        if ".edu." in email_completo or email_completo.endswith(".edu"):
-            logger.debug("Correo académico ignorado | %s", email_completo)
-            continue

@@ -29,13 +29,13 @@ Expansión de las vías de contacto y automatización de la creación de perfile
 
         Envío de mensajes automatizados con rate limiting estricto para evitar baneos de Meta.
 
-    [ ] Generador de CVs Dinámico:
+    [x] Generador de CVs Dinámico:
 
         Reemplazar los PDFs estáticos por plantillas HTML/CSS (Jinja2).
 
         Inyectar las keywords específicas encontradas durante el scraping de la empresa directamente en el currículum.
 
-        Renderizar a PDF en milisegundos con WeasyPrint o pdfkit antes de adjuntarlo.
+        Renderizar a PDF en milisegundos con typ o pdfkit antes de adjuntarlo.
 
     [ ] Mascota Interactiva en la TUI:
 

@@ -16,7 +16,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock as ThreadLock
-from typing import Optional, TypeAlias   # FIX: TypeAlias en lugar de `type X =` (3.12+)
+from typing import Optional, TypeAlias
 
 from rich import box
 from rich.console import Console
@@ -591,8 +591,7 @@ async def pipeline_mail(args: argparse.Namespace, estado: EstadoBot) -> None:
     estado.fase_actual = "[DRY-RUN] Campaña email…" if dry_run else "Campaña email en progreso…"
 
     mail_task: asyncio.Task = asyncio.create_task(
-        asyncio.to_thread(
-            procesar_envios_pendientes,
+        procesar_envios_pendientes(
             min_score=min_score, limite_empresas=50, dry_run=dry_run,
         )
     )

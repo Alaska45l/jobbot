@@ -10,6 +10,10 @@ wa_profile/
 
 # Archivos con credenciales reales
 start_bot.sh
+config.py
 
 # Currículums personales
 cvs/*.pdf
+cvs/perfil.jpg
+cvs/template.typ
+CV_Prueba_Visual.pdf

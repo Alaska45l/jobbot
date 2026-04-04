@@ -2,22 +2,17 @@
 scoring.py — JobBot Lead Scoring Engine
 Algoritmo de puntuación de prospectos y detección de perfil de CV.
 
-Cambios v1.1:
-  - ResultadoScoring: UMBRAL_AUTO como field real con default, frozen=True restaurado
-  - analizar_empresa ya no pisa atributos de clase en instancias
-  - __post_init__ calcula apto_envio_auto de forma limpia
-
 Python: 3.11+
 Dependencias: stdlib únicamente (re, logging, typing, dataclasses)
 """
-
 from __future__ import annotations
 
 import re
 import logging
 from dataclasses import dataclass, field
 from typing import Final
-from wa_sender import extraer_numeros_whatsapp
+
+from utils.phone import extraer_numeros_whatsapp   # FIX: ya no importa wa_sender
 
 logger = logging.getLogger("jobbot.scoring")
 
@@ -99,16 +94,8 @@ class ResultadoScoring:
     """
     Resultado completo del análisis de una página empresa.
 
-    `umbral_auto` es un parámetro de configuración que puede variar por
-    llamada (ej: --min-score desde la CLI). Se almacena como field para
-    que `apto_envio_auto` sea consistente con el umbral usado al calcular,
-    sin necesidad de recalcular ni pisar atributos de clase.
-
-    frozen=False: necesario porque `apto_envio_auto` se computa en
-    __post_init__ a partir de otros fields — el dataclass lo inicializa
-    en dos pasos. Si necesitás inmutabilidad total, podés usar
-    `object.__setattr__` en __post_init__ con frozen=True, pero la
-    legibilidad no lo justifica acá.
+    frozen=False: necesario porque apto_envio_auto se computa en
+    __post_init__ a partir de otros fields.
     """
     perfil_cv:       str
     score_total:     int
@@ -116,12 +103,10 @@ class ResultadoScoring:
     rubro_detectado: str                     = "desconocido"
     keyword_matches: dict[str, int]          = field(default_factory=dict)
     tiene_form_solo: bool                    = False
-    umbral_auto:     int                     = 55   # ← field real, no atributo de clase
-    apto_envio_auto: bool                    = field(init=False)  # ← calculado, no recibido
+    umbral_auto:     int                     = 55
+    apto_envio_auto: bool                    = field(init=False)
 
     def __post_init__(self) -> None:
-        # Se ejecuta después de que todos los fields están inicializados.
-        # Ahora es una asignación limpia, sin pisar nada.
         self.apto_envio_auto = self.score_total >= self.umbral_auto
 
 
@@ -169,34 +154,17 @@ def analizar_empresa(
 ) -> ResultadoScoring:
     """
     Analiza el HTML de una empresa y produce un ResultadoScoring.
-
-    Args:
-        html:        HTML crudo de la página.
-        dominio:     Dominio de la empresa (para logging).
-        tiene_ssl:   False si el dominio no usa HTTPS.
-        umbral_auto: Score mínimo para marcar como apto para envío automático.
-                     Se almacena en ResultadoScoring.umbral_auto para
-                     consistencia — no se recalcula externamente.
-
-    Returns:
-        ResultadoScoring completamente inicializado.
     """
     if not html or not html.strip():
         logger.warning("HTML vacío | dominio=%s", dominio)
-        return ResultadoScoring(
-            perfil_cv="CV_Admin_IT",
-            score_total=0,
-            umbral_auto=umbral_auto,
-        )
+        return ResultadoScoring(perfil_cv="CV_Admin_IT", score_total=0, umbral_auto=umbral_auto)
 
     texto_plano    = _strip_html(html)
     contactos:      list[ContactoDetectado] = []
     score:          int = 0
     emails_vistos:  set[str] = set()
 
-    # ------------------------------------------------------------------
     # 1. Emails
-    # ------------------------------------------------------------------
     for match in _RE_EMAIL.finditer(html):
         prefix         = match.group(1).lower()
         email_completo = match.group(0).lower()
@@ -205,64 +173,52 @@ def analizar_empresa(
             continue
         emails_vistos.add(email_completo)
 
-        if any(ext in email_completo for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf", ".mp4", ".woff", ".min")):
+        if any(ext in email_completo for ext in (
+            ".png", ".jpg", ".jpeg", ".gif", ".webp",
+            ".svg", ".pdf", ".mp4", ".woff", ".min",
+        )):
             continue
 
         tipo, prioridad, puntos = _clasificar_email(prefix)
-        contactos.append(ContactoDetectado(valor=email_completo, tipo=tipo, prioridad=prioridad, puntos=puntos))
+        contactos.append(ContactoDetectado(
+            valor=email_completo, tipo=tipo, prioridad=prioridad, puntos=puntos,
+        ))
         score += puntos
         logger.debug("Email | %s | tipo=%s | +%d pts", email_completo, tipo, puntos)
 
-# ------------------------------------------------------------------
-    # 1.5 WhatsApp
-    # ------------------------------------------------------------------
+    # 2. WhatsApp
     numeros_wa = extraer_numeros_whatsapp(html)
-
-    # Score flat: +35 pts si la empresa tiene WA, independiente de la cantidad
     if numeros_wa:
         score += 35
-        logger.debug("WhatsApp | %d números encontrados | +35 pts flat", len(numeros_wa))
-
-    # Persistir solo los primeros 3 para no saturar la tabla contactos
+        logger.debug("WhatsApp | %d números | +35 pts flat", len(numeros_wa))
     for numero in numeros_wa[:3]:
         contactos.append(ContactoDetectado(
-            valor=numero,
-            tipo="WhatsApp",
-            prioridad=1,
-            puntos=0,   # el score ya se sumó arriba, una sola vez
+            valor=numero, tipo="WhatsApp", prioridad=1, puntos=0,
         ))
-    
 
-    # ------------------------------------------------------------------
-    # 2. LinkedIn — Personas
-    # ------------------------------------------------------------------
+    # 3. LinkedIn — Personas
     linkedin_personas: set[str] = set()
     for match in _RE_LINKEDIN_PERSON.finditer(html):
         url = match.group(0).lower()
         if url in linkedin_personas:
             continue
         linkedin_personas.add(url)
-
         tiene_rol = _detectar_linkedin_persona_con_rol(html, url)
         puntos    = CONTACT_WEIGHTS["linkedin_person"] if tiene_rol else CONTACT_WEIGHTS["linkedin_company"]
         prioridad = 0 if tiene_rol else 2
-
         contactos.append(ContactoDetectado(
             valor=f"https://www.{url}", tipo="LinkedIn", prioridad=prioridad, puntos=puntos,
         ))
         score += puntos
         logger.debug("LinkedIn persona | %s | rrhh=%s | +%d pts", url, tiene_rol, puntos)
 
-    # ------------------------------------------------------------------
-    # 3. LinkedIn — Empresa
-    # ------------------------------------------------------------------
+    # 4. LinkedIn — Empresa
     linkedin_companies: set[str] = set()
     for match in _RE_LINKEDIN_COMPANY.finditer(html):
         url = match.group(0).lower()
         if url in linkedin_companies or url.replace("company/", "in/") in linkedin_personas:
             continue
         linkedin_companies.add(url)
-
         puntos = CONTACT_WEIGHTS["linkedin_company"]
         contactos.append(ContactoDetectado(
             valor=f"https://www.{url}", tipo="LinkedIn", prioridad=2, puntos=puntos,
@@ -270,32 +226,26 @@ def analizar_empresa(
         score += puntos
         logger.debug("LinkedIn company | %s | +%d pts", url, puntos)
 
-    # ------------------------------------------------------------------
-    # 4. Penalizaciones
-    # ------------------------------------------------------------------
+    # 5. Penalizaciones
     tiene_form_solo = False
     if _RE_WP_FORM.search(html) and not emails_vistos:
         score += CONTACT_WEIGHTS["form_only"]
         tiene_form_solo = True
         logger.debug("Penalización: solo formulario | %d pts", CONTACT_WEIGHTS["form_only"])
-
     if not tiene_ssl:
         score += CONTACT_WEIGHTS["no_ssl"]
         logger.debug("Penalización: sin SSL | %d pts", CONTACT_WEIGHTS["no_ssl"])
 
-    # ------------------------------------------------------------------
-    # 5. Detección de perfil CV por keywords
-    # ------------------------------------------------------------------
+    # 6. Detección de perfil CV
     keyword_matches: dict[str, int] = {
-        k: _contar_keywords(texto_plano, v["keywords"])   # type: ignore[arg-type]
+        k: _contar_keywords(texto_plano, v["keywords"])  # type: ignore[arg-type]
         for k, v in RUBRO_WEIGHTS.items()
     }
-
-    if all(v == 0 for v in keyword_matches.values()):
-        perfil_key = "admin_it"
-    else:
-        perfil_key = max(keyword_matches, key=lambda k: keyword_matches[k])
-
+    perfil_key = (
+        "admin_it"
+        if all(v == 0 for v in keyword_matches.values())
+        else max(keyword_matches, key=lambda k: keyword_matches[k])
+    )
     perfil_data = RUBRO_WEIGHTS[perfil_key]
     perfil_cv: str = str(perfil_data["cv"])
     score += int(perfil_data["score_bonus"])  # type: ignore[arg-type]
@@ -305,8 +255,6 @@ def analizar_empresa(
         dominio, perfil_cv, max(score, 0), len(contactos), max(score, 0) >= umbral_auto,
     )
 
-    # ResultadoScoring recibe umbral_auto como field normal.
-    # __post_init__ calcula apto_envio_auto internamente — sin pisar nada.
     return ResultadoScoring(
         perfil_cv=perfil_cv,
         score_total=max(score, 0),
@@ -315,7 +263,6 @@ def analizar_empresa(
         keyword_matches=keyword_matches,
         tiene_form_solo=tiene_form_solo,
         umbral_auto=umbral_auto,
-        # apto_envio_auto NO se pasa: es field(init=False), lo calcula __post_init__
     )
 
 
@@ -339,28 +286,17 @@ def scoring_to_dict(resultado: ResultadoScoring) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Entrypoint de prueba
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import json
-
     html_demo = """
-    <html><head><title>TechMDP - Desarrollo de Software</title></head>
-    <body>
-      <p>Somos una empresa de software y desarrollo web en Mar del Plata.</p>
-      <p>Contacto: <a href="mailto:rrhh@techmdp.com.ar">rrhh@techmdp.com.ar</a></p>
-      <p>Seguinos en <a href="https://www.linkedin.com/company/techmdp">LinkedIn</a></p>
-      <p>Hablá con nuestra HR Manager:
-        <a href="https://www.linkedin.com/in/ana-garcia-hr">Ana García - Talent Acquisition</a>
-      </p>
+    <html><body>
+      <p>Somos una empresa de software en Mar del Plata.</p>
+      <a href="mailto:rrhh@techmdp.com.ar">rrhh@techmdp.com.ar</a>
+      <a href="https://www.linkedin.com/company/techmdp">LinkedIn</a>
+      <a href="https://www.linkedin.com/in/ana-garcia-hr">Ana García - Talent Acquisition</a>
     </body></html>
     """
-
-    # Probar con umbral no-default para verificar que el field viaja bien
     resultado = analizar_empresa(html_demo, dominio="techmdp.com.ar", umbral_auto=60)
     print(json.dumps(scoring_to_dict(resultado), indent=2, ensure_ascii=False))
-
-    # Verificar consistencia: apto_envio_auto debe reflejar el umbral usado
     assert resultado.apto_envio_auto == (resultado.score_total >= resultado.umbral_auto)
     print("\n✓ Consistencia umbral_auto verificada.")

@@ -2,7 +2,6 @@
 db_manager.py — JobBot Database Engine
 Motor de base de datos SQLite para el sistema JobBot.
 
-Autor: JobBot Project
 Python: 3.11+
 Dependencias: stdlib únicamente (sqlite3, logging, contextlib, typing)
 """
@@ -14,9 +13,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-# ---------------------------------------------------------------------------
-# Configuración de logging estructurado
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
@@ -24,17 +20,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("jobbot.db_manager")
 
-# ---------------------------------------------------------------------------
-# Constantes
-# ---------------------------------------------------------------------------
 DB_PATH = Path(__file__).parent / "jobbot.db"
 COOLDOWN_DAYS: int = 90
 
-# ---------------------------------------------------------------------------
-# DDL — Definición del esquema relacional
-# ---------------------------------------------------------------------------
 _DDL_STATEMENTS: tuple[str, ...] = (
-    # Habilitar claves foráneas (SQLite las ignora por defecto)
     "PRAGMA foreign_keys = ON;",
 
     """
@@ -49,12 +38,15 @@ _DDL_STATEMENTS: tuple[str, ...] = (
     ) STRICT;
     """,
 
+    # v1.2: 'WhatsApp' agregado al CHECK constraint.
+    # NOTA: CREATE TABLE IF NOT EXISTS no modifica tablas existentes.
+    # Si ya tenés una DB, correr la migración del docstring del módulo.
     """
     CREATE TABLE IF NOT EXISTS contactos (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         empresa_id    INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
         email_o_link  TEXT    NOT NULL UNIQUE,
-        tipo          TEXT    NOT NULL CHECK(tipo IN ('RRHH', 'General', 'LinkedIn')),
+        tipo          TEXT    NOT NULL CHECK(tipo IN ('RRHH', 'General', 'LinkedIn', 'WhatsApp')),
         prioridad     INTEGER NOT NULL CHECK(prioridad BETWEEN 0 AND 3)
     ) STRICT;
     """,
@@ -71,23 +63,24 @@ _DDL_STATEMENTS: tuple[str, ...] = (
     ) STRICT;
     """,
 
-    # Índices para acelerar las búsquedas más frecuentes
     "CREATE INDEX IF NOT EXISTS idx_empresas_score   ON empresas(score DESC);",
     "CREATE INDEX IF NOT EXISTS idx_contactos_emp    ON contactos(empresa_id);",
     "CREATE INDEX IF NOT EXISTS idx_envios_emp_fecha ON campanas_envios(empresa_id, fecha_envio DESC);",
 )
 
 
-# ---------------------------------------------------------------------------
-# Context manager: conexión a la base de datos
-# ---------------------------------------------------------------------------
 @contextlib.contextmanager
 def get_connection(db_path: Path = DB_PATH):
     """
     Abre y cierra una conexión SQLite de forma segura.
-    - Activa WAL mode para mejor concurrencia lectora.
-    - Siempre activa foreign_keys (se resetea por conexión en SQLite).
-    - Hace rollback automático ante cualquier excepción.
+
+    v1.2 — cambios:
+      - timeout: 10 → 30s. Con concurrencia=5 en Playwright, hay hasta 5
+        writers simultáneos. WAL solo permite un writer a la vez; los otros
+        4 esperan. 10s podía lanzar OperationalError bajo carga normal.
+      - PRAGMA journal_mode y synchronous eliminados: se configuran una
+        sola vez en init_db. Emitirlos por conexión era overhead puro.
+      - foreign_keys se mantiene por conexión (SQLite lo resetea en cada una).
 
     Yields:
         sqlite3.Connection con row_factory = sqlite3.Row.
@@ -97,13 +90,11 @@ def get_connection(db_path: Path = DB_PATH):
         conn = sqlite3.connect(
             database=str(db_path),
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            timeout=10,
+            timeout=30,
             check_same_thread=False,
         )
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA journal_mode = WAL;")
-        conn.execute("PRAGMA synchronous = NORMAL;")
         yield conn
         conn.commit()
     except sqlite3.Error as exc:
@@ -116,26 +107,26 @@ def get_connection(db_path: Path = DB_PATH):
             conn.close()
 
 
-# ---------------------------------------------------------------------------
-# Inicialización del esquema
-# ---------------------------------------------------------------------------
 def init_db(db_path: Path = DB_PATH) -> None:
     """
-    Crea las tablas e índices si no existen.
-    Idempotente: seguro de llamar múltiples veces.
+    Crea las tablas e índices si no existen y configura los PRAGMAs
+    de rendimiento una sola vez por base de datos.
 
-    Args:
-        db_path: Ruta al archivo SQLite.
+    v1.2 — journal_mode=WAL, synchronous=NORMAL y cache_size movidos
+    aquí desde get_connection. Se ejecutan una única vez al arranque
+    en lugar de en cada una de las N conexiones concurrentes del scraper.
+
+    Idempotente: seguro de llamar múltiples veces.
     """
     with get_connection(db_path) as conn:
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute("PRAGMA cache_size = -8000;")   # 8 MB de page cache
         for statement in _DDL_STATEMENTS:
             conn.execute(statement)
     logger.info("Base de datos inicializada en: %s", db_path)
 
 
-# ---------------------------------------------------------------------------
-# CRUD — Empresas
-# ---------------------------------------------------------------------------
 def upsert_empresa(
     nombre: str,
     dominio: str,
@@ -143,13 +134,28 @@ def upsert_empresa(
     perfil_cv: Optional[str] = None,
     score: int = 0,
 ) -> int:
+    """
+    Inserta o actualiza una empresa por dominio (clave única).
+
+    v1.2 — RETURNING id reemplazado por SELECT posterior.
+    RETURNING fue introducido en SQLite 3.35.0 (marzo 2021).
+    Ubuntu 20.04 LTS viene con SQLite 3.31, donde cursor.fetchone()
+    sobre una cláusula RETURNING devuelve None → row_id = 0 →
+    todos los insert_contacto subsiguientes fallan con FK violation
+    silenciosa (INSERT OR IGNORE).
+
+    Returns:
+        ID de la fila insertada o actualizada (siempre > 0).
+
+    Raises:
+        ValueError: Si el dominio está vacío.
+    """
     if not dominio or not dominio.strip():
         raise ValueError("El dominio no puede estar vacío.")
 
     dominio = dominio.strip().lower()
 
-    # Agregamos 'RETURNING id' al final para que SQLite nos de el ID real
-    sql = """
+    sql_upsert = """
         INSERT INTO empresas (nombre, dominio, rubro, perfil_cv, score, fecha_scraping)
         VALUES (:nombre, :dominio, :rubro, :perfil_cv, :score, :fecha)
         ON CONFLICT(dominio) DO UPDATE SET
@@ -157,9 +163,10 @@ def upsert_empresa(
             rubro          = excluded.rubro,
             perfil_cv      = excluded.perfil_cv,
             score          = excluded.score,
-            fecha_scraping = excluded.fecha_scraping
-        RETURNING id;
+            fecha_scraping = excluded.fecha_scraping;
     """
+    sql_select = "SELECT id FROM empresas WHERE dominio = ? LIMIT 1;"
+
     params = {
         "nombre":    nombre.strip(),
         "dominio":   dominio,
@@ -170,40 +177,23 @@ def upsert_empresa(
     }
 
     with get_connection() as conn:
-        cursor = conn.execute(sql, params)
-        # Obtenemos el ID del resultado del RETURNING
-        row = cursor.fetchone()
+        conn.execute(sql_upsert, params)
+        row = conn.execute(sql_select, (dominio,)).fetchone()
         row_id: int = row[0] if row else 0
 
     logger.info("Empresa upserted | dominio=%s | id=%d | score=%d", dominio, row_id, score)
     return row_id
 
+
 def get_empresa_by_dominio(dominio: str) -> Optional[sqlite3.Row]:
-    """
-    Recupera una empresa por su dominio.
-
-    Args:
-        dominio: Dominio a buscar.
-
-    Returns:
-        sqlite3.Row si existe, None si no se encontró.
-    """
+    """Recupera una empresa por su dominio."""
     sql = "SELECT * FROM empresas WHERE dominio = ? LIMIT 1;"
     with get_connection() as conn:
         return conn.execute(sql, (dominio.strip().lower(),)).fetchone()
 
 
 def get_empresas_ordenadas_por_score(min_score: int = 0, limit: int = 200) -> list[sqlite3.Row]:
-    """
-    Retorna empresas ordenadas de mayor a menor score para priorizar envíos.
-
-    Args:
-        min_score: Score mínimo para filtrar leads de baja calidad.
-        limit:     Máximo de filas a devolver.
-
-    Returns:
-        Lista de sqlite3.Row ordenada por score DESC.
-    """
+    """Retorna empresas ordenadas de mayor a menor score."""
     sql = """
         SELECT * FROM empresas
         WHERE score >= ?
@@ -215,22 +205,13 @@ def get_empresas_ordenadas_por_score(min_score: int = 0, limit: int = 200) -> li
 
 
 def update_score(empresa_id: int, nuevo_score: int) -> None:
-    """
-    Actualiza el score de una empresa por ID.
-
-    Args:
-        empresa_id:  ID de la empresa.
-        nuevo_score: Nuevo valor calculado.
-    """
+    """Actualiza el score de una empresa por ID."""
     sql = "UPDATE empresas SET score = ? WHERE id = ?;"
     with get_connection() as conn:
         conn.execute(sql, (nuevo_score, empresa_id))
     logger.debug("Score actualizado | empresa_id=%d | score=%d", empresa_id, nuevo_score)
 
 
-# ---------------------------------------------------------------------------
-# CRUD — Contactos
-# ---------------------------------------------------------------------------
 def insert_contacto(
     empresa_id: int,
     email_o_link: str,
@@ -241,14 +222,7 @@ def insert_contacto(
     Inserta un contacto vinculado a una empresa.
     Silencia conflictos de unicidad (IGNORE) para ser idempotente.
 
-    Args:
-        empresa_id:   ID de la empresa propietaria del contacto.
-        email_o_link: Email o URL de LinkedIn.
-        tipo:         'RRHH' | 'General' | 'LinkedIn'.
-        prioridad:    0 (máxima) a 3 (mínima).
-
-    Returns:
-        ID del nuevo registro, o None si ya existía (conflicto ignorado).
+    Tipos válidos: 'RRHH' | 'General' | 'LinkedIn' | 'WhatsApp'
 
     Raises:
         ValueError: Si los parámetros son inválidos.
@@ -280,15 +254,7 @@ def insert_contacto(
 
 
 def get_contactos_by_empresa(empresa_id: int) -> list[sqlite3.Row]:
-    """
-    Retorna todos los contactos de una empresa ordenados por prioridad.
-
-    Args:
-        empresa_id: ID de la empresa.
-
-    Returns:
-        Lista de sqlite3.Row.
-    """
+    """Retorna todos los contactos de una empresa ordenados por prioridad."""
     sql = """
         SELECT * FROM contactos
         WHERE empresa_id = ?
@@ -298,27 +264,13 @@ def get_contactos_by_empresa(empresa_id: int) -> list[sqlite3.Row]:
         return conn.execute(sql, (empresa_id,)).fetchall()
 
 
-# ---------------------------------------------------------------------------
-# CRUD — Campañas / Envíos
-# ---------------------------------------------------------------------------
 def registrar_envio(
     empresa_id: int,
     cv_enviado: str,
     asunto_usado: str,
     estado: str = "enviado",
 ) -> int:
-    """
-    Registra un envío de campaña en el historial.
-
-    Args:
-        empresa_id:  ID de la empresa destinataria.
-        cv_enviado:  Nombre del archivo de CV usado (ej: 'CV_Tech.pdf').
-        asunto_usado: Asunto exacto del correo enviado.
-        estado:      Estado inicial del envío.
-
-    Returns:
-        ID del registro creado.
-    """
+    """Registra un envío de campaña en el historial."""
     estados_validos = {"pendiente", "enviado", "rebotado", "respondido"}
     if estado not in estados_validos:
         raise ValueError(f"Estado inválido: '{estado}'. Válidos: {estados_validos}")
@@ -339,13 +291,7 @@ def registrar_envio(
 
 
 def actualizar_estado_envio(envio_id: int, nuevo_estado: str) -> None:
-    """
-    Actualiza el estado de un envío existente (ej: de 'enviado' a 'respondido').
-
-    Args:
-        envio_id:     ID del registro en campanas_envios.
-        nuevo_estado: Nuevo estado válido.
-    """
+    """Actualiza el estado de un envío existente."""
     estados_validos = {"pendiente", "enviado", "rebotado", "respondido"}
     if nuevo_estado not in estados_validos:
         raise ValueError(f"Estado inválido: '{nuevo_estado}'.")
@@ -356,23 +302,10 @@ def actualizar_estado_envio(envio_id: int, nuevo_estado: str) -> None:
     logger.info("Estado actualizado | envio_id=%d | nuevo_estado=%s", envio_id, nuevo_estado)
 
 
-# ---------------------------------------------------------------------------
-# Lógica de negocio — Cooldown Anti-Spam
-# ---------------------------------------------------------------------------
 def esta_en_cooldown(empresa_id: int, cooldown_days: int = COOLDOWN_DAYS) -> bool:
     """
     Verifica si una empresa recibió un envío dentro del período de cooldown.
     Previene spam y posibles blacklistings.
-
-    El chequeo se hace a nivel de base de datos con una sola query,
-    sin traer filas al intérprete Python (más eficiente).
-
-    Args:
-        empresa_id:    ID de la empresa a verificar.
-        cooldown_days: Días mínimos entre envíos. Default: 90.
-
-    Returns:
-        True si está en cooldown (NO se debe enviar), False si está libre.
     """
     cutoff: str = (
         datetime.now(tz=timezone.utc) - timedelta(days=cooldown_days)
@@ -404,14 +337,6 @@ def get_empresas_listas_para_envio(
     """
     Retorna empresas con score suficiente que NO están en cooldown.
     Usa una sola query con LEFT JOIN para mayor eficiencia.
-
-    Args:
-        min_score:     Score mínimo (inclusive).
-        cooldown_days: Período de cooldown en días.
-        limit:         Máximo de resultados.
-
-    Returns:
-        Lista de sqlite3.Row ordenada por score DESC.
     """
     cutoff: str = (
         datetime.now(tz=timezone.utc) - timedelta(days=cooldown_days)
@@ -443,24 +368,15 @@ def get_empresas_listas_para_envio(
     return rows
 
 
-# ---------------------------------------------------------------------------
-# Entrypoint de prueba rápida
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     init_db()
-
     emp_id = upsert_empresa(
-        nombre="TechMDP SRL",
-        dominio="techmdp.com.ar",
-        rubro="software",
-        perfil_cv="CV_Tech",
-        score=90,
+        nombre="TechMDP SRL", dominio="techmdp.com.ar",
+        rubro="software", perfil_cv="CV_Tech", score=90,
     )
     insert_contacto(emp_id, "rrhh@techmdp.com.ar", tipo="RRHH", prioridad=1)
     insert_contacto(emp_id, "linkedin.com/company/techmdp", tipo="LinkedIn", prioridad=2)
-
     print(f"Empresa ID: {emp_id}")
     print(f"En cooldown: {esta_en_cooldown(emp_id)}")
-
     listas = get_empresas_listas_para_envio(min_score=50)
     print(f"Empresas listas para envío: {len(listas)}")

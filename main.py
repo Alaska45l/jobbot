@@ -1,13 +1,6 @@
 """
-main.py — JobBot Orchestrator v1.2
+main.py — JobBot Orchestrator v2.3
 Pipeline completo: OSINT Dorking → Async Scraping → Lead Scoring → Cold Email
-
-Cambios TUI v1.2:
-  - Sliding window: activos arriba, terminados abajo, sin superar MAX_SCRAPING_ROWS
-  - Snapshot pattern en render_dashboard: el lock se adquiere UNA vez por frame,
-    se copia el estado y se suelta antes de renderizar → elimina micro-stuttering
-  - Diseño HEAVY_EDGE con paleta neutral compatible con dark y light mode
-  - Log panel con auto-scroll: las líneas más nuevas siempre quedan abajo
 
 Python: 3.11+
 """
@@ -23,10 +16,9 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock as ThreadLock
-from typing import Optional
+from typing import Optional, TypeAlias   # FIX: TypeAlias en lugar de `type X =` (3.12+)
 
 from rich import box
-from rich.columns import Columns
 from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
@@ -41,28 +33,23 @@ from db_manager import (
     upsert_empresa,
 )
 from mailer import procesar_envios_pendientes
-from scraper import procesar_lote
+# scraper y playwright se importan lazy dentro de pipeline_scrape/pipeline_mail
+# para no bloquear --help ni modos que no los necesitan.
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Paleta de colores — neutral, legible en dark y light mode
+# Paleta de colores
 # ─────────────────────────────────────────────────────────────────────────────
-# Usamos nombres de color nombrados de Rich que tienen buen contraste en ambos
-# fondos, evitando bright_* que se pierden en terminales con fondo blanco.
-
-C_ACCENT    = "cyan"           # Títulos, encabezados
-C_OK        = "green"          # Estados exitosos, scores altos
-C_WARN      = "yellow"         # Scores medios, advertencias
-C_ERR       = "red"            # Errores
-C_DIM       = "bright_black"   # Labels, texto secundario (gris en ambos modos)
-C_ACTIVE    = "cyan"           # Dominio scrapeando actualmente
-C_DONE_OK   = "green"          # Terminado con éxito
-C_DONE_SKIP = "bright_black"   # Omitido / cooldown
-C_HEADER    = "bold white"     # Texto principal del header
+C_ACCENT    = "cyan"
+C_OK        = "green"
+C_WARN      = "yellow"
+C_ERR       = "red"
+C_DIM       = "bright_black"
+C_ACTIVE    = "cyan"
+C_HEADER    = "bold white"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Constantes
 # ─────────────────────────────────────────────────────────────────────────────
-
 PORTALES_EXCLUIDOS: frozenset[str] = frozenset({
     "bumeran.com.ar", "zonajobs.com.ar", "computrabajo.com.ar",
     "indeed.com", "indeed.com.ar", "linkedin.com", "reempleos.com.ar",
@@ -88,12 +75,9 @@ RUBROS_DEFAULT: list[str] = [
     "laboratorio médico", "desarrollo sistemas",
 ]
 
-# Tabla de scraping: filas visibles en total
-MAX_SCRAPING_ROWS: int = 18
-# De esas filas, cuántas máximo pueden ser activas simultáneamente
-MAX_ACTIVOS_ROWS:  int = 6
-
-MAX_LOG_LINES: int        = 14
+MAX_SCRAPING_ROWS: int  = 18
+MAX_ACTIVOS_ROWS:  int  = 6
+MAX_LOG_LINES:     int  = 14
 DASHBOARD_REFRESH_S: float = 0.25
 MAIL_POLL_INTERVAL_S: float = 3.0
 
@@ -114,7 +98,7 @@ class _TUILogHandler(logging.Handler):
         except Exception:
             line = record.getMessage()
         with self._lock:
-            self._buf.append(line)   # deque(maxlen=N) descarta automáticamente los más viejos
+            self._buf.append(line)
 
 
 def _configurar_logging(buffer: deque[str], lock: ThreadLock) -> None:
@@ -134,13 +118,13 @@ def _configurar_logging(buffer: deque[str], lock: ThreadLock) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Estado compartido — SLIDING WINDOW separada en activos / terminados
+# Estado compartido — SLIDING WINDOW
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Tipo de una fila de scraping
-type ScrapingRow = dict  # {"dominio", "score", "perfil_cv", "estado"}
+# FIX: TypeAlias compatible con Python 3.11+
+# Antes: `type ScrapingRow = dict` → SyntaxError en 3.11 (sintaxis de 3.12+)
+ScrapingRow: TypeAlias = dict
 
-# Estados que indican que el dominio todavía está siendo procesado
 _ESTADOS_ACTIVOS: frozenset[str] = frozenset({"Scrapeando", "Semilla"})
 
 
@@ -148,22 +132,14 @@ _ESTADOS_ACTIVOS: frozenset[str] = frozenset({"Scrapeando", "Semilla"})
 class EstadoBot:
     """
     Estado mutable compartido entre el event loop de asyncio y el hilo
-    de refresh de Rich.
-
-    Separamos scraping_activos y scraping_terminados para la sliding window:
-      - scraping_activos:    deque de tamaño MAX_ACTIVOS_ROWS  → aparecen ARRIBA
-      - scraping_terminados: deque de tamaño MAX_TERMINADOS_ROWS → aparecen ABAJO
-
-    La tabla visible = activos + terminados, siempre ≤ MAX_SCRAPING_ROWS filas.
+    de refresh de Rich. La sliding window separa activos de terminados.
     """
-
     fase_actual: str      = "Iniciando…"
     inicio:      datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     scraping_total:      int = 0
     scraping_procesados: int = 0
 
-    # Sliding window (escritura solo bajo _lock)
     scraping_activos:    deque = field(
         default_factory=lambda: deque(maxlen=MAX_ACTIVOS_ROWS)
     )
@@ -180,37 +156,23 @@ class EstadoBot:
 
     _lock: ThreadLock = field(default_factory=ThreadLock)
 
-    # ── API pública ──────────────────────────────────────────────────────────
-
     def upsert_scraping_row(self, dominio: str, score: int, perfil_cv: str, estado: str) -> None:
-        """
-        Gestiona el ciclo de vida de una fila en la sliding window.
-
-        Flujo:
-          1. Si el estado es activo → va/se mantiene en scraping_activos.
-          2. Si el estado es terminal → se elimina de activos y se PREPEND en terminados.
-             (los más recientes quedan arriba de la lista de terminados)
-
-        Thread-safe.
-        """
-        row: ScrapingRow = {"dominio": dominio, "score": score, "perfil_cv": perfil_cv, "estado": estado}
+        row: ScrapingRow = {
+            "dominio": dominio, "score": score, "perfil_cv": perfil_cv, "estado": estado,
+        }
         es_activo = estado in _ESTADOS_ACTIVOS
 
         with self._lock:
             if es_activo:
-                # Actualizar si ya existe en activos; si no, agregar
                 for r in self.scraping_activos:
                     if r["dominio"] == dominio:
                         r.update(row)
                         return
                 self.scraping_activos.append(row)
             else:
-                # Eliminar de activos (si estaba)
                 activos_filtrados = [r for r in self.scraping_activos if r["dominio"] != dominio]
                 self.scraping_activos.clear()
                 self.scraping_activos.extend(activos_filtrados)
-
-                # Actualizar en terminados si ya existe; si no, appendleft (más reciente arriba)
                 for r in self.scraping_terminados:
                     if r["dominio"] == dominio:
                         r.update(row)
@@ -218,24 +180,20 @@ class EstadoBot:
                 self.scraping_terminados.appendleft(row)
 
     def snapshot(self) -> dict:
-        """
-        Toma una copia atómica del estado mutable bajo un único lock.
-        El render usa esta copia y NUNCA adquiere el lock directamente,
-        eliminando la contención durante el renderizado.
-        """
+        """Copia atómica del estado. El render usa esta copia sin adquirir el lock."""
         with self._lock:
             return {
-                "fase_actual":        self.fase_actual,
-                "elapsed":            self.elapsed(),
-                "scraping_total":     self.scraping_total,
+                "fase_actual":         self.fase_actual,
+                "elapsed":             self.elapsed(),
+                "scraping_total":      self.scraping_total,
                 "scraping_procesados": self.scraping_procesados,
-                "activos":            list(self.scraping_activos),
-                "terminados":         list(self.scraping_terminados),
-                "mail_procesadas":    self.mail_procesadas,
-                "mail_enviadas":      self.mail_enviadas,
-                "mail_errores":       self.mail_errores,
-                "mail_omitidas":      self.mail_omitidas,
-                "log_lines":          list(self.log_buffer),  # orden cronológico (más nuevo al final)
+                "activos":             list(self.scraping_activos),
+                "terminados":          list(self.scraping_terminados),
+                "mail_procesadas":     self.mail_procesadas,
+                "mail_enviadas":       self.mail_enviadas,
+                "mail_errores":        self.mail_errores,
+                "mail_omitidas":       self.mail_omitidas,
+                "log_lines":           list(self.log_buffer),
             }
 
     def elapsed(self) -> str:
@@ -252,7 +210,7 @@ class EstadoBot:
 def _render_header(snap: dict) -> Panel:
     t = Text(justify="center")
     t.append("  ◈  J O B B O T  ", style="bold white")
-    t.append("v1.2", style=C_ACCENT)
+    t.append("v2.3", style=C_ACCENT)
     t.append("   ·   OSINT · Scraping · Cold Email · MdP  ◈\n", style="white")
     t.append("  Fase: ", style=C_DIM)
     t.append(snap["fase_actual"], style=f"bold {C_OK}")
@@ -261,7 +219,6 @@ def _render_header(snap: dict) -> Panel:
 
 
 def _row_style(estado: str, score: int) -> tuple[str, str, str]:
-    """Retorna (score_style, perfil_style, estado_style) según el estado de la fila."""
     if estado == "Scrapeando":
         return C_ACTIVE, C_ACTIVE, f"bold {C_ACTIVE}"
     if estado == "Semilla":
@@ -271,47 +228,39 @@ def _row_style(estado: str, score: int) -> tuple[str, str, str]:
         return sc, C_ACCENT, f"bold {C_OK}"
     if estado == "Error":
         return C_ERR, C_DIM, f"bold {C_ERR}"
-    # Omitido, Cooldown, etc.
     return C_DIM, C_DIM, C_DIM
 
 
 def _render_scraping_panel(snap: dict) -> Panel:
-    tbl = Table(
-        box=box.SIMPLE,
-        header_style=f"bold {C_ACCENT}",
-        show_lines=False,
-        expand=True,
-        padding=(0, 1),
-    )
-    tbl.add_column("Dominio",   no_wrap=True, max_width=32)
-    tbl.add_column("Score",     justify="right",  width=6)
-    tbl.add_column("Perfil",    justify="center", width=12)
-    tbl.add_column("Estado",    justify="center", width=11)
+    tbl = Table(box=box.SIMPLE, header_style=f"bold {C_ACCENT}",
+                show_lines=False, expand=True, padding=(0, 1))
+    tbl.add_column("Dominio",  no_wrap=True, max_width=32)
+    tbl.add_column("Score",    justify="right",  width=6)
+    tbl.add_column("Perfil",   justify="center", width=12)
+    tbl.add_column("Estado",   justify="center", width=11)
 
-    # ── Activos primero (con separador visual si hay terminados debajo) ──────
     activos    = snap["activos"]
     terminados = snap["terminados"]
 
     for row in activos:
         sc_s, pf_s, est_s = _row_style(row["estado"], row["score"])
         tbl.add_row(
-            Text(row["dominio"],           style=f"bold {C_ACTIVE}", overflow="ellipsis"),
-            Text("–",                      style=C_DIM),
-            Text(row.get("perfil_cv","–"), style=pf_s),
-            Text(row["estado"],            style=est_s),
+            Text(row["dominio"],            style=f"bold {C_ACTIVE}", overflow="ellipsis"),
+            Text("–",                       style=C_DIM),
+            Text(row.get("perfil_cv", "–"), style=pf_s),
+            Text(row["estado"],             style=est_s),
         )
 
-    # Separador visual entre activos y terminados
     if activos and terminados:
         tbl.add_row(Text("─" * 32, style=C_DIM), Text(""), Text(""), Text(""))
 
     for row in terminados:
         sc_s, pf_s, est_s = _row_style(row["estado"], row["score"])
         tbl.add_row(
-            Text(row["dominio"],                    overflow="ellipsis"),
-            Text(str(row["score"]),                 style=sc_s),
-            Text(row.get("perfil_cv") or "–",       style=pf_s),
-            Text(row["estado"],                     style=est_s),
+            Text(row["dominio"],                   overflow="ellipsis"),
+            Text(str(row["score"]),                style=sc_s),
+            Text(row.get("perfil_cv") or "–",      style=pf_s),
+            Text(row["estado"],                    style=est_s),
         )
 
     total = snap["scraping_total"]
@@ -322,35 +271,23 @@ def _render_scraping_panel(snap: dict) -> Panel:
         tbl,
         title=f"[bold {C_ACCENT}]  Scraping Progress  [/bold {C_ACCENT}]",
         subtitle=f"[{C_DIM}]{proc} / {total}  ({pct})  ·  activos: {len(activos)}[/{C_DIM}]",
-        box=box.HEAVY_EDGE,
-        border_style=C_ACCENT,
+        box=box.HEAVY_EDGE, border_style=C_ACCENT,
     )
 
 
 def _render_mail_panel(snap: dict) -> Panel:
     tbl = Table(box=box.SIMPLE, show_header=False, expand=True, padding=(0, 2))
-    tbl.add_column("k", style=C_DIM,    ratio=3)
+    tbl.add_column("k", style=C_DIM,     ratio=3)
     tbl.add_column("v", justify="right", ratio=1)
-
     tbl.add_row("Procesadas", Text(str(snap["mail_procesadas"]), style="bold white"))
     tbl.add_row("Enviadas",   Text(str(snap["mail_enviadas"]),   style=f"bold {C_OK}"))
     tbl.add_row("Errores",    Text(str(snap["mail_errores"]),    style=f"bold {C_ERR}"))
     tbl.add_row("Omitidas",   Text(str(snap["mail_omitidas"]),   style=f"bold {C_WARN}"))
-
-    return Panel(
-        tbl,
-        title=f"[bold white]  Campaña Email  [/bold white]",
-        box=box.HEAVY_EDGE,
-        border_style="magenta",
-    )
+    return Panel(tbl, title="[bold white]  Campaña Email  [/bold white]",
+                 box=box.HEAVY_EDGE, border_style="magenta")
 
 
 def _render_log_panel(snap: dict) -> Panel:
-    """
-    Auto-scroll: las líneas están en orden cronológico (más nueva al final),
-    por lo que simplemente renderizarlas en ese orden hace que el texto
-    más reciente quede siempre al final del panel — efecto scroll natural.
-    """
     lines = snap["log_lines"]
     t = Text(overflow="fold")
     for line in lines:
@@ -360,48 +297,21 @@ def _render_log_panel(snap: dict) -> Panel:
             t.append(line + "\n", style=C_WARN)
         else:
             t.append(line + "\n", style=C_DIM)
-
     if not lines:
         t = Text("Sin actividad registrada…", style=f"italic {C_DIM}")
-
-    return Panel(
-        t,
-        title=f"[{C_DIM}]  Log en vivo  [/{C_DIM}]",
-        box=box.HEAVY_EDGE,
-        border_style=C_DIM,
-    )
+    return Panel(t, title=f"[{C_DIM}]  Log en vivo  [/{C_DIM}]",
+                 box=box.HEAVY_EDGE, border_style=C_DIM)
 
 
 def render_dashboard(estado: EstadoBot) -> Layout:
-    """
-    Punto de entrada del render.
-
-    El snapshot se toma UNA sola vez, liberando el lock antes de construir
-    cualquier widget de Rich. Esto elimina la contención entre el hilo de
-    render y los threads de Playwright/asyncio que escriben en el estado.
-
-    Layout:
-      ┌───────── header (size=5) ──────────┐
-      ├── left (ratio=3) ─┬─ right (ratio=2)┤
-      │  Scraping table   │  Mail stats (7) │
-      │                   ├─────────────────┤
-      │                   │  Log panel      │
-      └───────────────────┴─────────────────┘
-    """
-    snap = estado.snapshot()   # ← único lock acquisition para todo el frame
+    """Punto de entrada del render. Toma el snapshot UNA sola vez."""
+    snap = estado.snapshot()
 
     root = Layout()
-    root.split_column(
-        Layout(name="header", size=5),
-        Layout(name="body"),
-    )
-    root["body"].split_row(
-        Layout(name="left",  ratio=3),
-        Layout(name="right", ratio=2),
-    )
+    root.split_column(Layout(name="header", size=5), Layout(name="body"))
+    root["body"].split_row(Layout(name="left", ratio=3), Layout(name="right", ratio=2))
     root["body"]["right"].split_column(
-        Layout(name="mail_stats", size=7),
-        Layout(name="log"),
+        Layout(name="mail_stats", size=7), Layout(name="log")
     )
 
     root["header"].update(_render_header(snap))
@@ -413,7 +323,7 @@ def render_dashboard(estado: EstadoBot) -> Layout:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helpers: dominio, DDGS, DB stats
+# Helpers: dominio, DDGS con retry, DB stats
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _extraer_dominio_limpio(url: str) -> Optional[str]:
@@ -440,6 +350,62 @@ def _es_portal_excluido(dominio: str) -> bool:
 def _ddgs_text_sync(query: str, max_results: int) -> list[dict]:
     from ddgs import DDGS
     return list(DDGS().text(query, max_results=max_results))
+
+
+async def _ddgs_con_retry(
+    query: str,
+    max_results: int,
+    max_intentos: int = 3,
+) -> list[dict]:
+    """
+    Wrapper de _ddgs_text_sync con backoff exponencial para rate limits.
+
+    DuckDuckGo rate-limita activamente bots. Un RatelimitException
+    requiere 30–120 segundos de espera mínima, no 2. Sin este retry,
+    un solo bloqueo silencia todo el dorking de la sesión.
+
+    Backoff: intento 0 → ~30s, intento 1 → ~60s, intento 2 → falla.
+
+    Args:
+        query:        Consulta de búsqueda.
+        max_results:  Máximo de resultados a pedir.
+        max_intentos: Número de intentos antes de rendirse (default 3).
+
+    Returns:
+        Lista de resultados o [] si todos los intentos fallaron.
+
+    Raises:
+        ImportError: Si el paquete ddgs no está instalado (no tiene sentido reintentar).
+    """
+    logger_fn = logging.getLogger("jobbot.dork")
+
+    for intento in range(max_intentos):
+        try:
+            return await asyncio.to_thread(_ddgs_text_sync, query, max_results)
+        except ImportError:
+            raise   # módulo no instalado: no reintentar
+        except Exception as exc:
+            es_ratelimit = (
+                "ratelimit" in type(exc).__name__.lower()
+                or "202" in str(exc)
+                or "429" in str(exc)
+            )
+            if intento == max_intentos - 1:
+                logger_fn.error(
+                    "DDGS falló definitivamente | intentos=%d | query='%s' | %s: %s",
+                    max_intentos, query[:60], type(exc).__name__, str(exc)[:100],
+                )
+                return []
+
+            espera = (30 * (2 ** intento)) + random.uniform(0, 10)
+            logger_fn.warning(
+                "DDGS %s | intento %d/%d | backoff=%.0fs | query='%s'",
+                "rate limit" if es_ratelimit else "error",
+                intento + 1, max_intentos, espera, query[:40],
+            )
+            await asyncio.sleep(espera)
+
+    return []
 
 
 def _query_mail_stats_db() -> dict[str, int]:
@@ -485,14 +451,11 @@ async def recolectar_urls_semilla(
         if estado:
             estado.fase_actual = f"Dorking [{idx}/{len(rubros)}]: {rubro}…"
 
-        try:
-            resultados: list[dict] = await asyncio.to_thread(_ddgs_text_sync, query, limite)
-        except ImportError:
-            logger_fn.error("ddgs no encontrado. Instalá con: pip install ddgs")
-            raise
-        except Exception as exc:
-            logger_fn.warning("DDGS error | rubro=%s | %s", rubro, str(exc)[:120])
-            await asyncio.sleep(2.0)
+        # FIX: _ddgs_con_retry reemplaza el try/except con sleep de 2s.
+        # Un rate limit de DDGS requiere 30–120s; 2s garantizaba fallos en cascada.
+        resultados = await _ddgs_con_retry(query, limite)
+        if not resultados:
+            await asyncio.sleep(random.uniform(3.5, 7.5))
             continue
 
         for r in resultados:
@@ -524,7 +487,6 @@ async def pipeline_dork(args: argparse.Namespace, estado: EstadoBot) -> None:
     estado.fase_actual = "Iniciando DuckDuckGo Dorking…"
     logger_fn = logging.getLogger("jobbot.dork")
 
-    # 1. Armar lista final de rubros (CLI + archivo)
     rubros_finales = list(args.rubros)
     rubros_file = getattr(args, "rubros_file", None)
     if rubros_file:
@@ -535,26 +497,24 @@ async def pipeline_dork(args: argparse.Namespace, estado: EstadoBot) -> None:
                     if line.strip() and not line.startswith("#")
                 ]
                 rubros_finales.extend(rubros_archivo)
-                rubros_finales = list(dict.fromkeys(rubros_finales))  # dedup, preservar orden
+                rubros_finales = list(dict.fromkeys(rubros_finales))
             logger_fn.info("Cargados %d rubros desde %s", len(rubros_archivo), rubros_file)
         except Exception as e:
             logger_fn.error("Error leyendo %s: %s", rubros_file, e)
 
-    # 2. Ejecutar dorking con la lista combinada
     n = await recolectar_urls_semilla(
-        rubros=rubros_finales,
-        zona="Mar del Plata",
-        limite=args.limite_dork,
-        estado=estado,
+        rubros=rubros_finales, zona="Mar del Plata",
+        limite=args.limite_dork, estado=estado,
     )
     estado.fase_actual = f"Dorking completo — {n} dominios semilla en DB"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pipeline: Scraping — actualiza la sliding window por dominio
+# Pipeline: Scraping
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
+    from scraper import procesar_dominio   # lazy: playwright solo se necesita aquí
     logger_fn = logging.getLogger("jobbot.main")
     estado.fase_actual = "Cargando dominios desde DB…"
 
@@ -575,10 +535,8 @@ async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
 
     async def _tarea_con_ui(dominio: str) -> None:
         async with semaforo:
-            # Marcar como activo ANTES de entrar al scraper
             estado.upsert_scraping_row(dominio, 0, "–", "Scrapeando")
             try:
-                from scraper import procesar_dominio  # importación local para evitar ciclo
                 resultado = await procesar_dominio(
                     dominio,
                     min_score_para_log=0,
@@ -602,10 +560,19 @@ async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
                 with estado._lock:
                     estado.scraping_procesados += 1
 
-    await asyncio.gather(
+    # FIX: inspeccionar resultados de gather en lugar de descartarlos.
+    # Con return_exceptions=True sin inspección, PlaywrightError y
+    # sqlite3.OperationalError desaparecían silenciosamente.
+    resultados_gather = await asyncio.gather(
         *[asyncio.create_task(_tarea_con_ui(d)) for d in dominios],
         return_exceptions=True,
     )
+    for r in resultados_gather:
+        if isinstance(r, BaseException):
+            logger_fn.error(
+                "Tarea de scraping sin capturar | %s: %s",
+                type(r).__name__, str(r)[:200],
+            )
 
     with estado._lock:
         exitosos = sum(1 for r in estado.scraping_terminados if r.get("estado") == "OK")
@@ -662,17 +629,16 @@ async def pipeline_mail(args: argparse.Namespace, estado: EstadoBot) -> None:
 async def pipeline_wa(args: argparse.Namespace, estado: EstadoBot) -> None:
     from wa_sender import procesar_envios_wa
     estado.fase_actual = "Campaña WhatsApp en progreso…"
-    
     metricas = await procesar_envios_wa(
         limite=getattr(args, "limite", 10),
         dry_run=getattr(args, "dry_run", False),
-        headless=getattr(args, "headless", False)
+        headless=getattr(args, "headless", False),
     )
-    estado.fase_actual = f"Campaña WA finalizada — Enviados: {metricas['enviados']} | Rebotados: {metricas['rebotados']}"
+    estado.fase_actual = (
+        f"Campaña WA finalizada — "
+        f"Enviados: {metricas['enviados']} | Rebotados: {metricas['rebotados']}"
+    )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Pipeline: Auto
-# ─────────────────────────────────────────────────────────────────────────────
 
 async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
     logging.getLogger("jobbot.main").info("=== Pipeline AUTO iniciado ===")
@@ -689,7 +655,7 @@ async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python main.py",
-        description="JobBot v1.2 — OSINT, scraping y cold email para MdP.",
+        description="JobBot v2.3 — OSINT, scraping y cold email para MdP.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Ejemplos:\n"
@@ -699,7 +665,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "  python main.py --auto\n"
         ),
     )
-
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dork",   action="store_true")
     mode.add_argument("--scrape", action="store_true")
@@ -707,20 +672,15 @@ def _build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--auto",   action="store_true")
     mode.add_argument("--wa",     action="store_true")
 
-    parser.add_argument("--rubros",      nargs="+", default=RUBROS_DEFAULT, metavar="RUBRO")
-    parser.add_argument("--rubros-file", type=str,  default=None, dest="rubros_file",
-                        metavar="FILE",
-                        help="Archivo .txt con palabras clave (una por línea, # para comentarios)")
-    parser.add_argument("--limite-dork",type=int,  default=30, dest="limite_dork")
-    parser.add_argument("--concurrencia",type=int, default=3)
-    parser.add_argument("--min-score",  type=int,  default=55, dest="min_score")
-    parser.add_argument("--dry-run",    action="store_true", dest="dry_run")
-    parser.add_argument("--limite", type=int, default=10, help="Límite de envíos WA")
-    parser.add_argument("--headless", action="store_true", help="Modo WA sin ventana")
-    parser.add_argument(
-        "--forzar-rescraping", action="store_true", dest="forzar_rescraping",
-        help="Ignorar cooldown de scraping y re-procesar todos los dominios",
-    )
+    parser.add_argument("--rubros",       nargs="+", default=RUBROS_DEFAULT, metavar="RUBRO")
+    parser.add_argument("--rubros-file",  type=str,  default=None, dest="rubros_file", metavar="FILE")
+    parser.add_argument("--limite-dork",  type=int,  default=30, dest="limite_dork")
+    parser.add_argument("--concurrencia", type=int,  default=3)
+    parser.add_argument("--min-score",    type=int,  default=55, dest="min_score")
+    parser.add_argument("--dry-run",      action="store_true", dest="dry_run")
+    parser.add_argument("--limite",       type=int,  default=10)
+    parser.add_argument("--headless",     action="store_true")
+    parser.add_argument("--forzar-rescraping", action="store_true", dest="forzar_rescraping")
     return parser
 
 
@@ -734,8 +694,8 @@ async def _async_main(args: argparse.Namespace) -> None:
     _configurar_logging(estado.log_buffer, estado._lock)
 
     logger_fn = logging.getLogger("jobbot.main")
-    modo = next(m for m in ("dork","scrape","mail","wa","auto") if getattr(args, m))
-    logger_fn.info("JobBot v1.2 | modo=%s | dry_run=%s", modo, getattr(args, "dry_run", False))
+    modo = next(m for m in ("dork", "scrape", "mail", "wa", "auto") if getattr(args, m))
+    logger_fn.info("JobBot v2.3 | modo=%s | dry_run=%s", modo, getattr(args, "dry_run", False))
 
     stop_event = asyncio.Event()
 
@@ -744,13 +704,13 @@ async def _async_main(args: argparse.Namespace) -> None:
             try:
                 live.update(render_dashboard(estado), refresh=True)
             except Exception:
-                pass_async_main
+                pass   # FIX: era `pass_async_main` → NameError que mataba el loop
             await asyncio.sleep(DASHBOARD_REFRESH_S)
 
     with Live(render_dashboard(estado), auto_refresh=False, screen=False, redirect_stderr=False) as live:
         refresh_task = asyncio.create_task(_refresh_loop(live))
         try:
-            if args.dork:    await pipeline_dork(args, estado)
+            if   args.dork:   await pipeline_dork(args, estado)
             elif args.scrape: await pipeline_scrape(args, estado)
             elif args.mail:   await pipeline_mail(args, estado)
             elif args.wa:     await pipeline_wa(args, estado)
@@ -767,10 +727,6 @@ async def _async_main(args: argparse.Namespace) -> None:
             except Exception:
                 pass
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry point sincrónico
-# ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     parser = _build_parser()

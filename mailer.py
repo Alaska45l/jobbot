@@ -3,15 +3,9 @@ mailer.py — JobBot Cold Email Engine
 Motor de envío de correos fríos con rotación de contenido, adjuntos dinámicos
 y rate limiting para cuidar la reputación del remitente.
 
-Cambios v1.1:
-  - _make_message_id(): extrae dominio del email del remitente en lugar de
-    parsear SMTP_HOST con split() — evita IndexError con hosts de 1 segmento
-  - Import de ResultadoScoring eliminado (no se usaba en este módulo)
-
 Python: 3.11+
-Dependencias: stdlib únicamente (smtplib, email, os, random, time, logging)
+Dependencias: stdlib únicamente (smtplib, email, random, time, logging)
 """
-
 from __future__ import annotations
 
 import logging
@@ -26,6 +20,7 @@ from email.utils import formatdate, make_msgid
 from pathlib import Path
 from typing import Optional
 
+from config import SENDER_NAME, SMTP_JITTER_MIN_S, SMTP_JITTER_MAX_S   # REFACTOR
 from db_manager import (
     esta_en_cooldown,
     get_contactos_by_empresa,
@@ -39,16 +34,11 @@ logger = logging.getLogger("jobbot.mailer")
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
-SLEEP_MIN_SEGUNDOS: int = 180
-SLEEP_MAX_SEGUNDOS: int = 480
-
 CV_DIR = Path(__file__).parent / "cvs"
 CV_MAP: dict[str, str] = {
     "CV_Tech":     "CV_Tech.pdf",
     "CV_Admin_IT": "CV_Admin_IT.pdf",
 }
-
-SENDER_NAME: str = os.getenv("SENDER_NAME", "Alaska")
 
 ASUNTOS: tuple[str, ...] = (
     "Búsqueda laboral — Administración con perfil IT | {nombre_empresa}",
@@ -158,12 +148,12 @@ Podés ver el código en: github.com/{github_user}/jobbot"""
 
 @dataclass(frozen=True, slots=True)
 class ConfigSMTP:
-    host:         str
-    port:         int
-    user:         str
-    password:     str
-    sender_name:  str
-    github_user:  str
+    host:          str
+    port:          int
+    user:          str
+    password:      str
+    sender_name:   str
+    github_user:   str
     linkedin_user: str
 
     @classmethod
@@ -191,37 +181,13 @@ class ConfigSMTP:
 # ---------------------------------------------------------------------------
 
 def _make_message_id(smtp_user: str, smtp_host: str) -> str:
-    """
-    Genera un Message-ID válido usando el dominio del email del remitente.
-
-    Estrategia de fallback en orden:
-      1. Dominio del email del remitente (user@dominio.com → dominio.com)  ← preferido
-      2. SMTP_HOST si tiene al menos 2 segmentos (smtp.ejemplo.com → ejemplo.com)
-      3. Literal "jobbot.local" como último recurso
-
-    Esto elimina el IndexError que ocurría con hosts de un solo segmento
-    (ej: SMTP_HOST="localhost") al hacer split(".")[-2].
-
-    Args:
-        smtp_user: Dirección de email del remitente (SMTP_USER).
-        smtp_host: Hostname del servidor SMTP (SMTP_HOST).
-
-    Returns:
-        String de Message-ID con formato RFC 2822 válido.
-    """
-    # Intento 1: dominio del email del remitente — siempre tiene el formato correcto
     if "@" in smtp_user:
         domain = smtp_user.split("@", 1)[1].strip()
         if "." in domain:
             return make_msgid(domain=domain)
-
-    # Intento 2: construir dominio desde SMTP_HOST
     parts = smtp_host.split(".")
     if len(parts) >= 2:
-        domain = ".".join(parts[-2:])   # smtp.gmail.com → gmail.com
-        return make_msgid(domain=domain)
-
-    # Intento 3: fallback seguro
+        return make_msgid(domain=".".join(parts[-2:]))
     return make_msgid(domain="jobbot.local")
 
 
@@ -242,6 +208,7 @@ def _preparar_adjunto(perfil_cv: str, nombre_empresa: str) -> tuple[bytes, str]:
 
     nombre_limpio = re.sub(r'[^\w\s-]', '', nombre_empresa).strip().replace(' ', '_')
     perfil_label  = perfil_cv.replace("CV_", "")
+    # REFACTOR: SENDER_NAME desde config.py en lugar de os.getenv local
     filename      = f"CV_{SENDER_NAME}_{perfil_label}_{nombre_limpio}.pdf"
     pdf_bytes     = archivo_fuente.read_bytes()
 
@@ -281,10 +248,9 @@ def _construir_email(
     msg["To"]         = destinatario
     msg["Subject"]    = asunto
     msg["Date"]       = formatdate(localtime=True)
-    msg["Message-ID"] = _make_message_id(config.user, config.host)  # ← usa helper robusto
+    msg["Message-ID"] = _make_message_id(config.user, config.host)
 
     msg.set_content(cuerpo, charset="utf-8")
-
     pdf_bytes, filename = _preparar_adjunto(perfil_cv, nombre_empresa)
     msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=filename)
 
@@ -303,10 +269,8 @@ def _enviar_via_smtp(config: ConfigSMTP, msg: EmailMessage) -> bool:
             smtp.ehlo()
             smtp.login(config.user, config.password)
             smtp.send_message(msg)
-
         logger.info("Email enviado | to=%s | subject='%s'", msg["To"], msg["Subject"][:60])
         return True
-
     except smtplib.SMTPAuthenticationError:
         logger.error("Error de autenticación SMTP | host=%s", config.host)
     except smtplib.SMTPRecipientsRefused as exc:
@@ -317,7 +281,6 @@ def _enviar_via_smtp(config: ConfigSMTP, msg: EmailMessage) -> bool:
         logger.error("Timeout SMTP | host=%s:%d", config.host, config.port)
     except OSError as exc:
         logger.error("Error de red | %s", exc)
-
     return False
 
 
@@ -333,14 +296,6 @@ def procesar_envios_pendientes(
     """
     Obtiene empresas aptas, verifica cooldown, construye y envía correos,
     registra resultados en DB y aplica rate limiting entre envíos.
-
-    Args:
-        min_score:       Score mínimo para considerar una empresa.
-        limite_empresas: Máximo de empresas a procesar en esta ejecución.
-        dry_run:         Si True, construye el email pero NO lo envía ni registra.
-
-    Returns:
-        {'procesadas': N, 'enviadas': N, 'omitidas': N, 'errores': N}
     """
     config   = ConfigSMTP.from_env()
     metricas = {"procesadas": 0, "enviadas": 0, "omitidas": 0, "errores": 0}
@@ -366,32 +321,29 @@ def procesar_envios_pendientes(
 
         logger.info("--- Procesando | empresa='%s' | dominio=%s | score=%d ---", nombre, dominio, score)
 
-        # Doble check de cooldown (race condition safety)
         if esta_en_cooldown(empresa_id):
-            logger.info("En cooldown de envío, omitiendo | empresa='%s'", nombre)
+            logger.info("En cooldown, omitiendo | empresa='%s'", nombre)
             metricas["omitidas"] += 1
             continue
 
-        # Selección del contacto de máxima prioridad
         contactos       = get_contactos_by_empresa(empresa_id)
         contactos_email = [
             c for c in contactos
             if c["tipo"] in ("RRHH", "General") and "@" in c["email_o_link"]
         ]
         if not contactos_email:
-            logger.info("Sin emails disponibles, omitiendo | empresa='%s'", nombre)
+            logger.info("Sin emails disponibles | empresa='%s'", nombre)
             metricas["omitidas"] += 1
             continue
 
         contacto_objetivo = sorted(contactos_email, key=lambda c: c["prioridad"])[0]
         if contacto_objetivo["prioridad"] > 3:
-            logger.info("Prioridad %d demasiado baja | empresa='%s'", contacto_objetivo["prioridad"], nombre)
+            logger.info("Prioridad demasiado baja | empresa='%s'", nombre)
             metricas["omitidas"] += 1
             continue
 
         destinatario = contacto_objetivo["email_o_link"]
 
-        # Construir email
         try:
             msg, asunto_usado = _construir_email(config, destinatario, nombre, perfil_cv)
         except (FileNotFoundError, ValueError) as exc:
@@ -399,13 +351,12 @@ def procesar_envios_pendientes(
             metricas["errores"] += 1
             continue
 
-        # Rate limiting
+        # REFACTOR: jitter desde config.py en lugar de constantes locales
         if not es_primer_envio and not dry_run:
-            sleep_seg = random.randint(SLEEP_MIN_SEGUNDOS, SLEEP_MAX_SEGUNDOS)
+            sleep_seg = random.randint(SMTP_JITTER_MIN_S, SMTP_JITTER_MAX_S)
             logger.info("Rate limit: %d seg (~%.1f min)…", sleep_seg, sleep_seg / 60)
             time.sleep(sleep_seg)
 
-        # Envío real o simulado
         if dry_run:
             logger.info(
                 "[DRY-RUN] OK | to=%s | subject='%s' | cv=%s",
@@ -445,10 +396,6 @@ def procesar_envios_pendientes(
     return metricas
 
 
-# ---------------------------------------------------------------------------
-# Entrypoint
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     import argparse
 
@@ -459,15 +406,12 @@ if __name__ == "__main__":
     )
 
     parser = argparse.ArgumentParser(description="JobBot — Motor de envío de emails")
-    parser.add_argument("--dry-run",   action="store_true", help="Auditoría sin envío real")
-    parser.add_argument("--min-score", type=int, default=55, help="Score mínimo (default: 55)")
-    parser.add_argument("--limite",    type=int, default=20, help="Máximo de empresas (default: 20)")
+    parser.add_argument("--dry-run",   action="store_true")
+    parser.add_argument("--min-score", type=int, default=55)
+    parser.add_argument("--limite",    type=int, default=20)
     args = parser.parse_args()
 
     metricas = procesar_envios_pendientes(
-        min_score=args.min_score,
-        limite_empresas=args.limite,
-        dry_run=args.dry_run,
+        min_score=args.min_score, limite_empresas=args.limite, dry_run=args.dry_run,
     )
     print(f"\nResultado: {metricas}")
-    

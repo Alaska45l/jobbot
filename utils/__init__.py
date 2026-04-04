@@ -1,0 +1,1 @@
+"""utils — Submódulo de utilidades compartidas de JobBot."""

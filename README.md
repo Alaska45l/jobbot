@@ -1,6 +1,6 @@
 
 <div align="center">
-  <h1>JobBot</h1>
+  <h1>JobBot v2.3</h1>
   <p><strong>Automated OSINT and Prospecting Pipeline for Targeted Job Searching</strong></p>
 
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">

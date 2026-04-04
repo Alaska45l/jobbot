@@ -21,7 +21,7 @@ El objetivo fundacional: crear una arquitectura asíncrona, determinista y de co
 
 Expansión de las vías de contacto y automatización de la creación de perfiles.
 
-    [ ] Módulo de WhatsApp (wa_sender.py):
+    [x] Módulo de WhatsApp (wa_sender.py):
 
         Incorporar expresiones regulares (_RE_WHATSAPP) en el Lead Scoring para cazar números locales.
 

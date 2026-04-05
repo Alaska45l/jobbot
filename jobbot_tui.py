@@ -11,6 +11,9 @@ Dependencias: rich
 """
 from __future__ import annotations
 
+import io
+import qrcode
+from functools import lru_cache
 import time
 from enum import Enum, auto
 from typing import Optional
@@ -267,6 +270,56 @@ def _mascot_panel(state: BotState, tick: int) -> Panel:
     )
 
 
+@lru_cache(maxsize=1)
+def _qr_panel(qr_data: str) -> Panel:
+    """
+    Genera un QR ASCII Denso (Medios Bloques) para evitar deformaciones
+    verticales y minimizar el espacio en la terminal.
+    """
+    # Forzamos ERROR_CORRECT_L para que la matriz sea lo más chica posible
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        border=1
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    matrix = qr.modules
+
+    lines = []
+    # Procesamos 2 filas de la matriz por cada 1 línea de texto
+    for r in range(0, len(matrix), 2):
+        line = []
+        for c in range(len(matrix[0])):
+            # True = Módulo negro del QR. False = Módulo blanco (fondo).
+            top = matrix[r][c]
+            bot = matrix[r+1][c] if r+1 < len(matrix) else False
+
+            if not top and not bot:    line.append("█")  # Ambas blancas
+            elif not top and bot:      line.append("▀")  # Arriba blanca, abajo negra
+            elif top and not bot:      line.append("▄")  # Arriba negra, abajo blanca
+            else:                      line.append(" ")  # Ambas negras (vacío)
+            
+        lines.append("".join(line))
+
+    ascii_text = Text(
+        "\n".join(lines), 
+        style="bold white on black",
+        justify="center",
+        no_wrap=True,
+        overflow="crop",
+    )
+
+    return Panel(
+        ascii_text,
+        title=Text(" SYS // AUTH - ESCANEAR QR ", style=P.s_matte),
+        title_align="center",
+        box=box.HEAVY,
+        border_style=P.YELLOW,
+        padding=(0, 0),
+    )
+
+
 def _metric(label: str, value: str | int, style: Style = P.s_chrome) -> tuple:
     return (
         Text(f"  {label}", style=P.s_matte),
@@ -376,6 +429,7 @@ def generate_dashboard(
     elapsed: str = "00:00:00",
     phase:   str = "STANDBY",
     tick:    int = 0,
+    wa_qr_data: str = "",
 ) -> Layout:
     """
     Pure function — takes state, returns a fully rendered Layout.
@@ -388,6 +442,7 @@ def generate_dashboard(
         elapsed: Human-readable elapsed time string "HH:MM:SS".
         phase:   Short description of the current pipeline phase.
         tick:    Monotonically increasing integer for animation frames.
+        wa_qr_data: String containing the QR payload to render.
 
     Returns:
         rich.layout.Layout ready to be passed to live.update().
@@ -401,12 +456,17 @@ def generate_dashboard(
     )
 
     root["body"].split_row(
-        Layout(name="mascot", size=55),   # fixed-width LCD panel
+        Layout(name="mascot", size=68),   # fixed-width LCD panel
         Layout(name="telemetry"),
     )
 
     root["header"].update(_header(elapsed, phase))
-    root["body"]["mascot"].update(_mascot_panel(state, tick))
+    
+    if wa_qr_data:
+        root["body"]["mascot"].update(_qr_panel(wa_qr_data))
+    else:
+        root["body"]["mascot"].update(_mascot_panel(state, tick))
+        
     root["body"]["telemetry"].update(_telemetry_panel(metrics))
     root["footer"].update(_syslog_panel(logs[-14:]))   # last 14 lines max
 
@@ -462,6 +522,7 @@ def metrics_from_estado(snap: dict) -> dict:
         "wa_bounced":       "—",
         "wa_errors":        "—",
         "wa_daily_cap":     30,
+        "wa_qr_data":       snap.get("wa_qr_data", ""),
     }
 
 

@@ -145,6 +145,7 @@ class EstadoBot:
     wa_ok:       int = 0    # confirmed WhatsApp sends
     wa_fail:     int = 0    # bounced + WA errors combined
     target:      str = "—"  # human-readable label of what is being processed
+    wa_qr_data:  str = ""   # native QR code data for terminal rendering
 
     log_buffer: deque = field(default_factory=lambda: deque(maxlen=MAX_LOG_LINES))
 
@@ -200,6 +201,7 @@ class EstadoBot:
                 "wa_ok":               self.wa_ok,
                 "wa_fail":             self.wa_fail,
                 "target":              self.target,
+                "wa_qr_data":          self.wa_qr_data,
                 # ── log tape ──
                 "log_lines":           list(self.log_buffer),
             }
@@ -248,6 +250,7 @@ def _build_ui_metrics(snap: dict) -> dict:
         "wa_daily_cap":   30,
         # ── current target label (used by future TUI panels) ─────────────────
         "target":         snap.get("target",          "—"),
+        "wa_qr_data":     snap.get("wa_qr_data",      ""),
     }
 
 
@@ -576,7 +579,8 @@ async def pipeline_wa(args: argparse.Namespace, estado: EstadoBot) -> None:
     metricas = await procesar_envios_wa(
         limite=getattr(args, "limite",   10),
         dry_run=getattr(args, "dry_run", False),
-        headless=getattr(args, "headless", False),
+        headless=True,
+        estado=estado,
     )
 
     with estado._lock:
@@ -678,6 +682,7 @@ async def _async_main(args: argparse.Namespace) -> None:
                         # Truncate to keep the header strip clean
                         phase   = snap["fase_actual"].upper()[:48],
                         tick    = tick,
+                        wa_qr_data = snap["wa_qr_data"],
                     ),
                     refresh=True,
                 )
@@ -695,6 +700,7 @@ async def _async_main(args: argparse.Namespace) -> None:
         elapsed = "00:00:00",
         phase   = "INICIANDO…",
         tick    = 0,
+        wa_qr_data = "",
     )
 
     with Live(
@@ -731,6 +737,7 @@ async def _async_main(args: argparse.Namespace) -> None:
                         elapsed = snap["elapsed"],
                         phase   = snap["fase_actual"].upper()[:48],
                         tick    = tick,
+                        wa_qr_data = snap["wa_qr_data"],
                     )
                 )
             except Exception:

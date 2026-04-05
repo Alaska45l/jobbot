@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -80,6 +81,7 @@ _SEL: dict[str, str | tuple[str, ...]] = {
         '[data-testid="popup-contents"] button',
         'div[role="dialog"] button',
     ),
+    "qr_data": 'div[data-ref]',
 }
 
 _POPUP_INVALID_TEXTS: tuple[str, ...] = (
@@ -224,37 +226,51 @@ def count_envios_wa_hoy() -> int:
 # Autenticación WhatsApp Web
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def _esperar_autenticacion(page: Page) -> bool:
+async def _esperar_autenticacion(page: Page, estado: Optional["EstadoBot"] = None) -> bool:
     """
     Bloquea hasta que WhatsApp Web muestre la pantalla principal.
-    Detecta sesión activa primero; si no, espera el escaneo de QR.
+    Detecta sesión activa primero; si no, extrae el QR data-ref y lo propaga.
     """
     logger.info("Verificando estado de sesión WhatsApp Web…")
 
-    try:
-        await page.wait_for_selector(_SEL["main"], timeout=8_000)
-        logger.info("Sesión activa detectada — sin QR necesario.")
-        return True
-    except PlaywrightTimeoutError:
-        pass
+    start_time = time.monotonic()
+    tiempo_total = 0.0
+    ultimo_qr = ""
 
-    logger.warning(
-        "No se detectó sesión activa. "
-        "Esperando QR en la ventana del navegador (%.0f seg)…",
-        TIMEOUT_QR_MS / 1000,
-    )
-    try:
-        await page.wait_for_selector(_SEL["qr"], timeout=15_000)
-        logger.info("QR visible — el usuario tiene %.0f seg para escanearlo.", TIMEOUT_QR_MS / 1000)
-    except PlaywrightTimeoutError:
-        logger.warning("QR no detectado, esperando igualmente…")
+    while tiempo_total < TIMEOUT_QR_MS:
+        try:
+            main_el = await page.query_selector(_SEL["main"])
+            if main_el:
+                logger.info("✓ Sesión activa detectada o QR escaneado.")
+                if estado:
+                    with estado._lock:
+                        estado.wa_qr_data = ""
+                return True
+        except PlaywrightError:
+            pass
 
-    try:
-        await page.wait_for_selector(_SEL["main"], timeout=TIMEOUT_QR_MS)
-        logger.info("✓ QR escaneado — sesión de WhatsApp Web activa.")
-        return True
-    except PlaywrightTimeoutError:
-        logger.error("Timeout esperando autenticación (%.0f seg). Abortando.", TIMEOUT_QR_MS / 1000)
+        try:
+            qr_el = await page.wait_for_selector(_SEL["qr_data"], timeout=2_000)
+            if qr_el:
+                qr_data = await qr_el.get_attribute("data-ref")
+                if qr_data and qr_data != ultimo_qr:
+                    ultimo_qr = qr_data
+                    logger.info("Nuevo código QR detectado para escanear.")
+                    if estado:
+                        with estado._lock:
+                            estado.wa_qr_data = qr_data
+        except PlaywrightTimeoutError:
+            pass
+        except PlaywrightError:
+            pass
+
+        await asyncio.sleep(1.0)
+        tiempo_total = (time.monotonic() - start_time) * 1000
+
+    logger.error("Timeout esperando autenticación (%.0f seg). Abortando.", TIMEOUT_QR_MS / 1000)
+    if estado:
+        with estado._lock:
+            estado.wa_qr_data = ""
         return False
 
 
@@ -416,6 +432,7 @@ async def procesar_envios_wa(
     limite: int = 20,
     dry_run: bool = False,
     headless: bool = False,
+    estado: Optional["EstadoBot"] = None,
 ) -> dict[str, int]:
     """
     Pipeline completo: cuota diaria → contactos pendientes →
@@ -474,7 +491,7 @@ async def procesar_envios_wa(
                 await page.goto(WA_BASE_URL, wait_until="domcontentloaded", timeout=TIMEOUT_NAV_MS)
 
             if not dry_run:
-                autenticado = await _esperar_autenticacion(page)
+                autenticado = await _esperar_autenticacion(page, estado)
                 if not autenticado:
                     logger.error("No se pudo autenticar en WhatsApp Web. Abortando.")
                     return metricas

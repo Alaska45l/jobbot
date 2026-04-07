@@ -102,8 +102,8 @@ class JobMascot:
             ("    ██    ██  ██              ██    \n", self.CAT_BODY),
             ("      ██    ██████          ██      \n", self.CAT_BODY),
             ("        ██                  ██      \n", self.CAT_BODY),
-            ("          ██                ██      \n", self.CAT_BODY),
-            ("          ██  ██  ████  ██  ██      \n", self.CAT_BODY),
+            ("        ██████████████  ██  ██      \n", self.CAT_BODY),
+            ("                                    \n", self.CAT_BODY),
             ("                                    ", self.CAT_BODY),
         )
 

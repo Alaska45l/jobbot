@@ -34,7 +34,7 @@ from db_manager import (
     get_empresa_by_dominio,
     get_connection,
 )
-from utils.browser import CHROMIUM_ARGS, apply_stealth   # REFACTOR: centralizado
+from utils.browser import apply_stealth   # REFACTOR: centralizado
 
 logger = logging.getLogger("jobbot.scraper")
 
@@ -46,6 +46,15 @@ WAIT_LOAD_MS: int        = 4_000
 BETWEEN_PAGES_MIN: float = 1.8
 BETWEEN_PAGES_MAX: float = 4.5
 SCRAPING_COOLDOWN_DAYS: int = 7
+
+CHROMIUM_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-infobars",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-features=IsolateOrigins,site-per-process",
+    "--lang=es-AR,es;q=0.9",  # Crucial: IDioma local
+]
 
 PRIORITY_PATHS: tuple[str, ...] = (
     "/contacto", "/contactanos", "/contact",
@@ -76,14 +85,6 @@ USER_AGENTS: tuple[str, ...] = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:125.0) Gecko/20100101 Firefox/125.0",
     "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
-)
-
-VIEWPORTS: tuple[dict[str, int], ...] = (
-    {"width": 1920, "height": 1080},
-    {"width": 1680, "height": 1050},
-    {"width": 1440, "height": 900},
-    {"width": 1366, "height": 768},
-    {"width": 1536, "height": 864},
 )
 
 
@@ -172,13 +173,19 @@ async def _crear_contexto_stealth(browser: Browser) -> BrowserContext:
     add_init_script() inline (eliminada la copia duplicada).
     """
     ua = random.choice(USER_AGENTS)
-    vp = random.choice(VIEWPORTS)
 
     context = await browser.new_context(
         user_agent=ua,
-        viewport=vp,
+        viewport={
+            "width": random.randint(1366, 1920), 
+            "height": random.randint(768, 1080)
+        },
         locale="es-AR",
         timezone_id="America/Argentina/Buenos_Aires",
+        color_scheme=random.choice(["dark", "light"]),
+        device_scale_factor=random.choice([1, 1.25, 1.5]),
+        has_touch=False,
+        is_mobile=False,
         permissions=[],
         java_script_enabled=True,
         accept_downloads=False,
@@ -194,8 +201,7 @@ async def _crear_contexto_stealth(browser: Browser) -> BrowserContext:
     await apply_stealth(context)   # REFACTOR: centralizado en utils.browser
 
     logger.debug(
-        "Contexto stealth creado | ua=...%s | viewport=%dx%d",
-        ua[-30:], vp["width"], vp["height"],
+        "Contexto stealth creado | ua=...%s", ua[-30:]
     )
     return context
 
@@ -229,6 +235,18 @@ async def _navegar_y_extraer(
         if response.status in (403, 429, 500, 503):
             logger.warning("HTTP %d recibido, saltando | url=%s", response.status, url)
             return "", []
+
+        # Simulación de lectura humana antes de extraer el HTML
+        try:
+            # Mueve el mouse a un punto aleatorio de la pantalla superior
+            await page.mouse.move(random.randint(100, 800), random.randint(100, 400))
+            await asyncio.sleep(random.uniform(0.3, 0.8))
+            
+            # Scrollea un tercio de la pantalla (rompe la métrica de 'scroll 0' de Datadome)
+            await page.evaluate("window.scrollBy(0, window.innerHeight / 1.5)")
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+        except Exception:
+            pass # Si el mouse o el scroll fallan, ignoramos y seguimos
 
         await asyncio.sleep(random.uniform(BETWEEN_PAGES_MIN, BETWEEN_PAGES_MAX))
         html = await page.content()
@@ -354,7 +372,9 @@ async def procesar_dominio(
         else:
             async with async_playwright() as pw:
                 own_browser = await pw.chromium.launch(
-                    headless=True, args=CHROMIUM_ARGS   # REFACTOR: desde utils.browser
+                    headless=True, 
+                    args=CHROMIUM_ARGS,
+                    ignore_default_args=["--enable-automation"]
                 )
                 try:
                     html_total = await _scrape_con_browser(own_browser)
@@ -431,7 +451,9 @@ async def procesar_lote(
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
-            headless=True, args=CHROMIUM_ARGS
+            headless=True, 
+            args=CHROMIUM_ARGS,
+            ignore_default_args=["--enable-automation"]
         )
         logger.info(
             "Browser Chromium lanzado | dominios=%d | concurrencia=%d",

@@ -11,10 +11,12 @@ import asyncio
 import logging
 import random
 import re
+import signal
 import urllib.parse
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from threading import Lock as ThreadLock
 from typing import Optional, TypeAlias
 
@@ -68,6 +70,14 @@ MAX_ACTIVOS_ROWS:     int   = 6
 MAX_LOG_LINES:        int   = 14
 DASHBOARD_REFRESH_S:  float = 0.25
 MAIL_POLL_INTERVAL_S: float = 3.0
+
+# Maximum wall-clock time for a single complete dork→scrape→mail cycle.
+_CYCLE_TIMEOUT_S: float = 4 * 3600.0
+# Exponential backoff on consecutive cycle failures.
+_BACKOFF_BASE_S:  float = 60.0
+_BACKOFF_CAP_S:   float = 3600.0   # 1 hour ceiling
+# After this many consecutive failures, stop retrying and escalate.
+_MAX_CONSECUTIVE_FAILURES: int = 8
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -205,6 +215,23 @@ class EstadoBot:
                         return
                 self.scraping_terminados.appendleft(row)
 
+    def reset_cycle_metrics(self) -> None:
+        """Resets all per-cycle counters on EstadoBot while preserving daemon-level state."""
+        with self._lock:
+            self.scraping_total      = 0
+            self.scraping_procesados = 0
+            self.scraping_activos.clear()
+            self.scraping_terminados.clear()
+            self.mail_procesadas = 0
+            self.mail_enviadas   = 0
+            self.mail_errores    = 0
+            self.mail_omitidas   = 0
+            self.emails_ok       = 0
+            self.emails_fail     = 0
+            self.wa_ok           = 0
+            self.wa_fail         = 0
+            self.target          = "—"
+
     def snapshot(self) -> dict:
         """Atomic copy of state. The render loop uses this without holding the lock."""
         with self._lock:
@@ -281,6 +308,38 @@ def _build_ui_metrics(snap: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers: domain normalization, DDGS with retry, DB stats
 # ─────────────────────────────────────────────────────────────────────────────
+
+def cargar_rubros(ruta_archivo: str = "rubros.txt") -> list[str]:
+    """
+    Carga la lista de rubros dinámicamente desde un archivo de texto.
+    Ignora las líneas vacías y las que empiezan con '#' (comentarios).
+    """
+    logger = logging.getLogger("jobbot.main")
+    ruta = Path(ruta_archivo)
+    
+    if not ruta.exists():
+        logger.critical("No se encontró el archivo %s. Crealo con tu lista de rubros.", ruta_archivo)
+        # Fallback de emergencia mínimo para que no crashee en la cara
+        return ["software house", "soporte técnico pc"]
+        
+    with open(ruta, "r", encoding="utf-8") as f:
+        rubros = [
+            line.strip() 
+            for line in f 
+            if line.strip() and not line.startswith("#")
+        ]
+        
+    logger.info("Se cargaron %d rubros desde %s", len(rubros), ruta_archivo)
+    return rubros
+
+def _construir_query_dork(rubro: str, zona: str = "") -> str:
+    """Builds a DuckDuckGo OSINT query string with no double-space artifacts."""
+    parts: list[str] = ["site:.ar"]
+    if zona.strip():
+        parts.append(f'"{zona.strip()}"')
+    parts.append(f'"{rubro}"')
+    parts.append('(contacto OR rrhh OR empleos OR "trabaja con nosotros" OR cv)')
+    return " ".join(parts)
 
 def _extraer_dominio_limpio(url: str) -> Optional[str]:
     try:
@@ -389,8 +448,11 @@ async def recolectar_urls_semilla(
     insertados = 0
 
     for idx, rubro in enumerate(rubros, start=1):
-        query = f'site:ar "{zona}" {rubro} (contacto OR rrhh OR empleos)'
-        logger_fn.info("Dorking [%d/%d] | rubro=%s", idx, len(rubros), rubro)
+        query = _construir_query_dork(rubro, zona)
+        logger_fn.info(
+            "Dorking [%d/%d] | rubro=%s | zona=%s | query='%s'",
+            idx, len(rubros), rubro, zona or "nacional", query,
+        )
 
         if estado:
             estado.fase_actual = f"Dorking [{idx}/{len(rubros)}]: {rubro}…"
@@ -438,24 +500,16 @@ async def pipeline_dork(args: argparse.Namespace, estado: EstadoBot) -> None:
     estado.fase_actual = "Iniciando DuckDuckGo Dorking…"
     logger_fn = logging.getLogger("jobbot.dork")
 
-    rubros_finales = list(args.rubros)
-    rubros_file = getattr(args, "rubros_file", None)
-    if rubros_file:
-        try:
-            with open(rubros_file, "r", encoding="utf-8") as f:
-                rubros_archivo = [
-                    line.strip() for line in f
-                    if line.strip() and not line.startswith("#")
-                ]
-                rubros_finales.extend(rubros_archivo)
-                rubros_finales = list(dict.fromkeys(rubros_finales))
-            logger_fn.info("Cargados %d rubros desde %s", len(rubros_archivo), rubros_file)
-        except Exception as e:
-            logger_fn.error("Error leyendo %s: %s", rubros_file, e)
+    # 1. Cargamos la lista gigante que creamos
+    ruta = getattr(args, "rubros_file", None) or "rubros.txt"
+    mis_rubros = cargar_rubros(ruta)
 
+    # 2. Se la pasamos a la función de recolección en tu pipeline_dork
     n = await recolectar_urls_semilla(
-        rubros=rubros_finales, zona="Mar del Plata",
-        limite=args.limite_dork, estado=estado,
+        rubros=mis_rubros, 
+        zona="",  # Nacional
+        limite=args.limite_dork, 
+        estado=estado,
     )
 
     estado.fase_actual = f"Dorking completo — {n} dominios semilla en DB"
@@ -618,11 +672,104 @@ async def pipeline_wa(args: argparse.Namespace, estado: EstadoBot) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
-    logging.getLogger("jobbot.main").info("=== Pipeline AUTO iniciado ===")
-    await pipeline_dork(args, estado)
-    await pipeline_scrape(args, estado)
-    await pipeline_mail(args, estado)
-    estado.fase_actual = "Pipeline completo finalizado"
+    logger_fn = logging.getLogger("jobbot.main")
+    logger_fn.info("=== Pipeline AUTO (DAEMON MODE) iniciado ===")
+
+    ciclo                = 1
+    consecutive_failures = 0
+
+    while True:
+        estado.reset_cycle_metrics()
+        estado.fase_actual = f"Iniciando Ciclo #{ciclo}…"
+        with estado._lock:
+            estado.target = f"Ciclo {ciclo}"
+
+        try:
+            async with asyncio.timeout(_CYCLE_TIMEOUT_S):
+                await pipeline_dork(args, estado)
+                await pipeline_scrape(args, estado)
+                await pipeline_mail(args, estado)
+
+            consecutive_failures = 0
+            logger_fn.info("Ciclo %d completado exitosamente.", ciclo)
+
+        except asyncio.CancelledError:
+            logger_fn.info(
+                "Señal de apagado recibida durante ciclo %d. "
+                "Deteniendo daemon de forma segura.",
+                ciclo,
+            )
+            raise
+
+        except TimeoutError:
+            consecutive_failures += 1
+            logger_fn.error(
+                "Ciclo %d excedió el timeout de %.0f segundos (fallo #%d).",
+                ciclo, _CYCLE_TIMEOUT_S, consecutive_failures,
+            )
+            estado.fase_actual = (
+                f"Ciclo #{ciclo} → TIMEOUT. "
+                f"Backoff #{consecutive_failures}…"
+            )
+
+        except Exception as exc:
+            consecutive_failures += 1
+            logger_fn.error(
+                "Error crítico en ciclo %d | %s: %s (fallo #%d)",
+                ciclo, type(exc).__name__, str(exc)[:200], consecutive_failures,
+                exc_info=True,
+            )
+            estado.fase_actual = (
+                f"Error en Ciclo #{ciclo} ({type(exc).__name__}). "
+                f"Backoff #{consecutive_failures}…"
+            )
+
+        else:
+            pausa_s = random.uniform(1_500, 2_700)  # 25–45 minutes
+            estado.fase_actual = (
+                f"Ciclo #{ciclo} completo. "
+                f"Durmiendo {pausa_s / 60:.1f} min…"
+            )
+            logger_fn.info(
+                "Ciclo %d completado. Pausa anti-ban de %.1f minutos.",
+                ciclo, pausa_s / 60,
+            )
+            try:
+                await asyncio.sleep(pausa_s)
+            except asyncio.CancelledError:
+                logger_fn.info("Interrumpido durante el sleep. Apagando daemon…")
+                raise
+            ciclo += 1
+            continue
+
+        if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+            msg = (
+                f"Daemon abortado: {consecutive_failures} fallos consecutivos "
+                f"sin recuperación. Revisá los logs y reiniciá manualmente."
+            )
+            logger_fn.critical(msg)
+            estado.fase_actual = f"⛔ DAEMON ABORTADO — {consecutive_failures} fallos"
+            raise RuntimeError(msg)
+
+        deterministic = _BACKOFF_BASE_S * (2 ** (consecutive_failures - 1))
+        jitter        = random.uniform(0, _BACKOFF_BASE_S)
+        backoff_s     = min(deterministic + jitter, _BACKOFF_CAP_S)
+
+        logger_fn.warning(
+            "Backoff #%d: durmiendo %.0f segundos antes de reintentar ciclo %d.",
+            consecutive_failures, backoff_s, ciclo,
+        )
+        estado.fase_actual = (
+            f"Backoff #{consecutive_failures}: "
+            f"{backoff_s:.0f}s antes de reintentar…"
+        )
+        try:
+            await asyncio.sleep(backoff_s)
+        except asyncio.CancelledError:
+            logger_fn.info("Interrumpido durante backoff. Apagando daemon…")
+            raise
+
+        ciclo += 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -670,6 +817,20 @@ async def _async_main(args: argparse.Namespace) -> None:
 
     estado = EstadoBot()
     _configurar_logging(estado.log_buffer)
+
+    _main_task = asyncio.current_task()
+
+    def _on_sigterm() -> None:
+        logging.getLogger("jobbot.main").warning(
+            "SIGTERM received — cancelling main task for graceful shutdown."
+        )
+        if _main_task and not _main_task.done():
+            _main_task.cancel()
+
+    try:
+        asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, _on_sigterm)
+    except NotImplementedError:
+        pass
 
     logger_fn = logging.getLogger("jobbot.main")
     modo = next(m for m in ("dork", "scrape", "mail", "wa", "auto") if getattr(args, m))

@@ -52,6 +52,64 @@ RUBRO_WEIGHTS: Final[dict[str, dict[str, int | str | list]]] = {
     },
 }
 
+# Señales negativas que indican que el dominio NO es un prospecto B2B válido.
+# Diseño de pesos:
+#   - Peso ≤ -100 → exclusión automática sin importar los positivos.
+#   - Peso entre -30 y -70 → penalización fuerte pero compensable si hay
+#     contactos de RRHH directos (que suman 40-90 puntos).
+#   - Señales débiles (-10 a -20) → solo empujan hacia abajo en casos borderline.
+#
+# RATIONALE de cada decisión:
+#   "últimas noticias" / "cobertura" → portal de noticias inequívoco.
+#   "escribir un comentario" → patrón canónico de blog (WP, Blogger, Ghost).
+#   "agregar al carrito" → e-commerce B2C; más específico que "carrito".
+#   "publicado por" + "hace X días" → loop de artículos de blog.
+#   "redacción" → newsroom (no empresa).
+#   "categorías" como señal aislada es débil (cualquier sitio las tiene);
+#       se usa solo en combinación via _contar_ngrams.
+#   "wordpress" removido: demasiados falsos positivos (PyMEs de MdP).
+#   "portfolio" removido: software houses y agencias TIENEN portfolio y
+#       son exactamente el perfil CV_Tech que queremos contactar.
+
+NEGATIVE_SIGNALS: Final[dict[str, int]] = {
+    # Portales de noticias / medios (exclusión casi segura)
+    "últimas noticias":      -90,
+    "redacción":             -80,
+    "cobertura periodística":-80,
+    "enviado por el editor": -80,
+    "sala de prensa":        -70,
+    "nota de prensa":        -60,
+
+    # Patrones de blog (señales de contenido, no de empresa)
+    "escribir un comentario": -70,   # footer de comentarios WP/Ghost
+    "publicado por":          -40,   # byline de autor
+    "deja una respuesta":     -60,   # WP comment form label
+    "suscribirse al blog":    -60,
+    "leer el artículo":       -30,
+
+    # E-commerce B2C puro
+    "agregar al carrito":     -60,
+    "añadir al carrito":      -60,
+    "mi carrito de compras":  -50,
+    "checkout":               -40,   # puede coexistir con B2B, peso moderado
+
+    # Sitios personales / CV online
+    "este es mi portfolio":   -80,
+    "currículum vitae personal": -60,
+}
+
+# Regex para extraer texto de <meta name="description"> y <title>.
+# _strip_html elimina el contenido de los atributos HTML; estas etiquetas
+# son las más informativas para detectar portales de noticias.
+_RE_META_DESC: Final[re.Pattern[str]] = re.compile(
+    r'<meta\s[^>]*name=["\']description["\']\s[^>]*content=["\'](.*?)["\']',
+    re.IGNORECASE | re.DOTALL,
+)
+_RE_TITLE: Final[re.Pattern[str]] = re.compile(
+    r'<title[^>]*>(.*?)</title>',
+    re.IGNORECASE | re.DOTALL,
+)
+
 _RRHH_PREFIXES: Final[frozenset[str]] = frozenset({
     "rrhh", "cv", "talento", "empleos", "trabajo", "personas",
     "recruiting", "recruitment", "hr", "humanresources", "seleccion",
@@ -94,20 +152,30 @@ class ResultadoScoring:
     """
     Resultado completo del análisis de una página empresa.
 
-    frozen=False: necesario porque apto_envio_auto se computa en
-    __post_init__ a partir de otros fields.
+    v1.3 — añadido penalty_matches para trazabilidad de exclusiones.
+    El score_total refleja el valor real (puede ser negativo fuerte);
+    apto_envio_auto se computa sobre ese valor sin flooring, para que
+    la exclusión por penalización sea siempre correcta.
     """
     perfil_cv:       str
     score_total:     int
     contactos:       list[ContactoDetectado] = field(default_factory=list)
     rubro_detectado: str                     = "desconocido"
     keyword_matches: dict[str, int]          = field(default_factory=dict)
+    penalty_matches: dict[str, int]          = field(default_factory=dict)  # NUEVO
     tiene_form_solo: bool                    = False
     umbral_auto:     int                     = 55
     apto_envio_auto: bool                    = field(init=False)
 
     def __post_init__(self) -> None:
+        # El check usa score_total sin floor: un sitio con -100 debe quedar excluido.
+        # El floor (-20) solo existe para la TUI; se aplica en scoring_to_dict().
         self.apto_envio_auto = self.score_total >= self.umbral_auto
+
+    @property
+    def score_display(self) -> int:
+        """Score flooreado en -20 para mostrar en la TUI sin valores extremos."""
+        return max(-20, self.score_total)
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +210,59 @@ def _contar_keywords(texto: str, keywords: list[str]) -> int:
     )
 
 
+def _extraer_texto_semantico(html: str) -> str:
+    """
+    Extrae el texto que _strip_html descarta: contenido de atributos HTML
+    relevantes para el scoring (title, meta description).
+
+    _strip_html() hace re.sub(r'<[^>]+>', ' ', html), eliminando no solo
+    las etiquetas sino también los valores de sus atributos. Para el QR de
+    noticias el campo más diagnóstico es <meta name="description">, que
+    nunca aparece en el texto plano resultante.
+
+    Returns:
+        String con title + meta description del documento, en minúsculas.
+    """
+    partes: list[str] = []
+    m_title = _RE_TITLE.search(html)
+    if m_title:
+        partes.append(m_title.group(1))
+    m_desc = _RE_META_DESC.search(html)
+    if m_desc:
+        partes.append(m_desc.group(1))
+    return " ".join(partes).lower()
+
+
+def _evaluar_penalizaciones(texto_plano: str, texto_semantico: str) -> tuple[int, dict[str, int]]:
+    """
+    Aplica NEGATIVE_SIGNALS sobre el contenido del sitio.
+
+    Busca en la unión de texto_plano (body visible) + texto_semantico
+    (title + meta description) para maximizar la cobertura sin duplicar
+    el texto de análisis para las señales positivas.
+
+    Returns:
+        (penalizacion_total, dict con los términos encontrados y sus pesos)
+    """
+    texto_combinado = (texto_plano + " " + texto_semantico).lower()
+    encontrados: dict[str, int] = {}
+    total = 0
+
+    for termino, peso in NEGATIVE_SIGNALS.items():
+        if termino in texto_combinado:
+            encontrados[termino] = peso
+            total += peso
+            logger.debug("Penalización | '%s' | %+d pts", termino, peso)
+
+    if encontrados:
+        logger.info(
+            "Penalizaciones aplicadas | términos=%d | total=%+d pts | %s",
+            len(encontrados), total,
+            ", ".join(f"{t}({p})" for t, p in list(encontrados.items())[:3]),
+        )
+    return total, encontrados
+
+
 # ---------------------------------------------------------------------------
 # Motor de scoring
 # ---------------------------------------------------------------------------
@@ -154,15 +275,40 @@ def analizar_empresa(
 ) -> ResultadoScoring:
     """
     Analiza el HTML de una empresa y produce un ResultadoScoring.
+
+    v1.3 — Fase 0: penalizaciones léxicas (NEGATIVE_SIGNALS) aplicadas
+    antes que las señales positivas. Un sitio de noticias queda excluido
+    aunque tenga un email de RRHH en el pie de página.
     """
     if not html or not html.strip():
         logger.warning("HTML vacío | dominio=%s", dominio)
         return ResultadoScoring(perfil_cv="CV_Admin_IT", score_total=0, umbral_auto=umbral_auto)
 
     texto_plano    = _strip_html(html)
+    texto_semantico = _extraer_texto_semantico(html)   # NUEVO: title + meta desc
     contactos:      list[ContactoDetectado] = []
-    score:          int = 0
     emails_vistos:  set[str] = set()
+
+    # ── FASE 0: Penalizaciones (NUEVO) ──────────────────────────────────────
+    penalizacion, penalty_matches = _evaluar_penalizaciones(texto_plano, texto_semantico)
+    score: int = penalizacion
+
+    # Cortocircuito: si las penalizaciones ya garantizan exclusión y no hay
+    # contactos de RRHH posibles, saltamos el análisis de contactos para
+    # ahorrar CPU. El umbral de corte es -(umbral_auto + max_posible_contacto).
+    # max_posible_contacto ≈ 90 (LinkedIn person con rol + email RRHH).
+    CORTE_TEMPRANO = -(umbral_auto + 90)
+    if score <= CORTE_TEMPRANO:
+        logger.info(
+            "Exclusión temprana | dominio=%s | penalización=%+d (≤%d)",
+            dominio, score, CORTE_TEMPRANO,
+        )
+        return ResultadoScoring(
+            perfil_cv="CV_Admin_IT",
+            score_total=score,
+            penalty_matches=penalty_matches,
+            umbral_auto=umbral_auto,
+        )
 
     # 1. Emails
     for match in _RE_EMAIL.finditer(html):
@@ -252,15 +398,16 @@ def analizar_empresa(
 
     logger.info(
         "Scoring | dominio=%s | perfil=%s | score=%d | contactos=%d | apto=%s",
-        dominio, perfil_cv, max(score, 0), len(contactos), max(score, 0) >= umbral_auto,
+        dominio, perfil_cv, score, len(contactos), score >= umbral_auto,
     )
 
     return ResultadoScoring(
         perfil_cv=perfil_cv,
-        score_total=max(score, 0),
+        score_total=score,
         contactos=sorted(contactos, key=lambda c: c.prioridad),
         rubro_detectado=perfil_key,
         keyword_matches=keyword_matches,
+        penalty_matches=penalty_matches,
         tiene_form_solo=tiene_form_solo,
         umbral_auto=umbral_auto,
     )
@@ -274,9 +421,11 @@ def scoring_to_dict(resultado: ResultadoScoring) -> dict:
     return {
         "perfil_cv":       resultado.perfil_cv,
         "score_total":     resultado.score_total,
+        "score_display":   resultado.score_display,      # NUEVO: flooreado para TUI
         "umbral_auto":     resultado.umbral_auto,
         "rubro_detectado": resultado.rubro_detectado,
         "keyword_matches": resultado.keyword_matches,
+        "penalty_matches": resultado.penalty_matches,    # NUEVO: trazabilidad
         "tiene_form_solo": resultado.tiene_form_solo,
         "apto_envio_auto": resultado.apto_envio_auto,
         "contactos": [

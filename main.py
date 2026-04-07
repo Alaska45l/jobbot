@@ -443,8 +443,33 @@ async def pipeline_dork(args: argparse.Namespace, estado: EstadoBot) -> None:
 # Pipeline: Scraping
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _make_progress_hook(estado: EstadoBot, logger_fn: logging.Logger):
+    """
+    Retorna un callable compatible con la firma on_progress de procesar_lote.
+    Mantiene el acoplamiento cero entre scraper.py y EstadoBot.
+    """
+    def _hook(dominio: str, resultado) -> None:
+        if resultado is not None:
+            estado.upsert_scraping_row(
+                dominio, resultado.score_total, resultado.perfil_cv, "OK"
+            )
+            logger_fn.info(
+                "OK | %s | score=%d | perfil=%s | apto=%s",
+                dominio, resultado.score_total,
+                resultado.perfil_cv, resultado.apto_envio_auto,
+            )
+        else:
+            estado.upsert_scraping_row(dominio, 0, "–", "Omitido")
+
+        with estado._lock:
+            estado.scraping_procesados += 1
+            estado.target = dominio
+
+    return _hook
+
+
 async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
-    from scraper import procesar_dominio   # lazy: playwright only needed here
+    from scraper import procesar_lote   # lazy: playwright solo se necesita aquí
     logger_fn = logging.getLogger("jobbot.main")
     estado.fase_actual = "Cargando dominios desde DB…"
 
@@ -461,53 +486,19 @@ async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
         estado.scraping_procesados = 0
     estado.fase_actual = f"Scrapeando {len(dominios)} dominios…"
 
-    semaforo = asyncio.Semaphore(args.concurrencia)
-
-    async def _tarea_con_ui(dominio: str) -> None:
-        async with semaforo:
-            with estado._lock:
-                # ── metrics: broadcast active domain to the LCD panel ─────────
-                estado.target = dominio
-            estado.upsert_scraping_row(dominio, 0, "–", "Scrapeando")
-            try:
-                resultado = await procesar_dominio(
-                    dominio,
-                    min_score_para_log=0,
-                    forzar_rescraping=getattr(args, "forzar_rescraping", False),
-                )
-                if resultado:
-                    estado.upsert_scraping_row(
-                        dominio, resultado.score_total, resultado.perfil_cv, "OK"
-                    )
-                    logger_fn.info(
-                        "OK | %s | score=%d | perfil=%s | apto=%s",
-                        dominio, resultado.score_total,
-                        resultado.perfil_cv, resultado.apto_envio_auto,
-                    )
-                else:
-                    estado.upsert_scraping_row(dominio, 0, "–", "Omitido")
-            except Exception as exc:
-                logger_fn.error("Error | dominio=%s | %s", dominio, str(exc)[:100])
-                estado.upsert_scraping_row(dominio, 0, "–", "Error")
-            finally:
-                with estado._lock:
-                    estado.scraping_procesados += 1
-
-    # Inspect gather results — silently swallowed exceptions become visible here
-    resultados_gather = await asyncio.gather(
-        *[asyncio.create_task(_tarea_con_ui(d)) for d in dominios],
-        return_exceptions=True,
+    resultados = await procesar_lote(
+        dominios=dominios,
+        concurrencia=args.concurrencia,
+        min_score_para_log=0,
+        forzar_rescraping=getattr(args, "forzar_rescraping", False),
+        on_progress=_make_progress_hook(estado, logger_fn),
     )
-    for r in resultados_gather:
-        if isinstance(r, BaseException):
-            logger_fn.error(
-                "Tarea de scraping sin capturar | %s: %s",
-                type(r).__name__, str(r)[:200],
-            )
 
     with estado._lock:
-        exitosos   = sum(1 for r in estado.scraping_terminados if r.get("estado") == "OK")
+        estado.scraping_procesados = len(resultados)
+        exitosos = sum(1 for v in resultados.values() if v is not None)
         estado.target = "—"   # ── metrics: clear target on completion
+        
     estado.fase_actual = f"Scraping completo — {exitosos} / {len(dominios)} exitosos"
     logger_fn.info("Lote finalizado | total=%d | exitosos=%d", len(dominios), exitosos)
 

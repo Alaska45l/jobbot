@@ -14,7 +14,7 @@ import random
 import re
 import urllib.parse
 import urllib.robotparser
-from typing import Optional
+from typing import Callable, Optional
 from urllib.error import URLError
 
 from playwright.async_api import (
@@ -415,6 +415,7 @@ async def procesar_lote(
     concurrencia: int = 3,
     min_score_para_log: int = 30,
     forzar_rescraping: bool = False,
+    on_progress: Optional[Callable] = None,
 ) -> dict[str, Optional[ResultadoScoring]]:
     """
     Procesa una lista de dominios con concurrencia controlada.
@@ -442,6 +443,8 @@ async def procesar_lote(
                     forzar_rescraping=forzar_rescraping,
                 )
                 resultados[dominio] = resultado
+                    if on_progress is not None:
+                        on_progress(dominio, resultado)
 
         await asyncio.gather(
             *[asyncio.create_task(_tarea(d)) for d in dominios],

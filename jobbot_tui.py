@@ -273,50 +273,60 @@ def _mascot_panel(state: BotState, tick: int) -> Panel:
 @lru_cache(maxsize=1)
 def _qr_panel(qr_data: str) -> Panel:
     """
-    Genera un QR ASCII Denso (Medios Bloques) para evitar deformaciones
-    verticales y minimizar el espacio en la terminal.
+    Renderiza el QR de WhatsApp Web en terminal.
+
+    Historial de cambios:
+      v1 (original): version=1, border=1 → DataOverflowError en payloads
+                     largos de WA Auth; quiet zone insuficiente.
+      v2 (parche 1): version=None, border=2 → auto-sizing correcto.
+                     no_wrap=True + overflow="crop" → aún truncaba si
+                     minimum_size del Layout era menor que el ancho del QR.
+      v3 (este):     Elimina no_wrap/overflow del Text. El Panel usa
+                     expand=False para no estirar el QR, y el Layout
+                     garantiza minimum_size=88 para contenerlo.
+                     Estilo aplicado al Text completo (O(1), no por carácter).
     """
-    # Forzamos ERROR_CORRECT_L para que la matriz sea lo más chica posible
     qr = qrcode.QRCode(
-        version=1,
+        version=None,                               # auto-size según payload
         error_correction=qrcode.constants.ERROR_CORRECT_L,
-        border=1
+        box_size=1,
+        border=2,                                   # quiet zone: 2 módulos c/lado
     )
     qr.add_data(qr_data)
     qr.make(fit=True)
     matrix = qr.modules
 
-    lines = []
-    # Procesamos 2 filas de la matriz por cada 1 línea de texto
+    lines: list[str] = []
     for r in range(0, len(matrix), 2):
-        line = []
+        row_str = ""
         for c in range(len(matrix[0])):
-            # True = Módulo negro del QR. False = Módulo blanco (fondo).
             top = matrix[r][c]
-            bot = matrix[r+1][c] if r+1 < len(matrix) else False
+            bot = matrix[r + 1][c] if r + 1 < len(matrix) else False
+            if not top and not bot: row_str += "█"
+            elif not top and bot:   row_str += "▀"
+            elif top and not bot:   row_str += "▄"
+            else:                   row_str += " "
+        lines.append(row_str)
 
-            if not top and not bot:    line.append("█")  # Ambas blancas
-            elif not top and bot:      line.append("▀")  # Arriba blanca, abajo negra
-            elif top and not bot:      line.append("▄")  # Arriba negra, abajo blanca
-            else:                      line.append(" ")  # Ambas negras (vacío)
-            
-        lines.append("".join(line))
-
-    ascii_text = Text(
-        "\n".join(lines), 
-        style="bold white on black",
+    # Estilo en el objeto Text, no por carácter.
+    # "white on black" fuerza el contraste correcto independientemente
+    # del tema de terminal (Arch/KDE Plasma con paleta oscura transparente).
+    qr_content = Text(
+        "\n".join(lines),
+        style="white on black",
         justify="center",
-        no_wrap=True,
-        overflow="crop",
+        # Sin no_wrap ni overflow: Rich renderiza el ancho natural del QR.
+        # El Layout con minimum_size=88 garantiza que haya espacio.
     )
 
     return Panel(
-        ascii_text,
-        title=Text(" SYS // AUTH - ESCANEAR QR ", style=P.s_matte),
-        title_align="center",
-        box=box.HEAVY,
-        border_style=P.YELLOW,
-        padding=(0, 0),
+        qr_content,
+        title="[bold yellow] 🔐 AUTH REQUERIDA [/]",
+        subtitle="[dim]ESCANEA CON WHATSAPP[/]",
+        border_style="bright_blue",
+        box=box.DOUBLE_EDGE,
+        padding=(1, 2),
+        expand=False,   # El panel no se estira: el QR mantiene su geometría.
     )
 
 
@@ -456,7 +466,7 @@ def generate_dashboard(
     )
 
     root["body"].split_row(
-        Layout(name="mascot", size=68),   # fixed-width LCD panel
+        Layout(name="mascot", minimum_size=88),  # v12 QR → 79 chars, v14 → 87 chars
         Layout(name="telemetry"),
     )
 

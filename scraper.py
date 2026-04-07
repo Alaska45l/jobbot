@@ -415,43 +415,71 @@ async def procesar_lote(
     concurrencia: int = 3,
     min_score_para_log: int = 30,
     forzar_rescraping: bool = False,
-    on_progress: Optional[Callable] = None,
+    on_progress: Optional[Callable[[str, Optional[ResultadoScoring]], None]] = None,
 ) -> dict[str, Optional[ResultadoScoring]]:
     """
     Procesa una lista de dominios con concurrencia controlada.
     Lanza UN solo proceso Chromium y crea un contexto aislado por dominio.
+
+    Fixes aplicados:
+      - IndentationError corregido: on_progress al mismo nivel que resultados[].
+      - asyncio.gather result inspeccionado: excepciones logueadas, no silenciadas.
+      - Browser cerrado en try/finally: garantiza cleanup aún si gather falla.
     """
     semaforo  = asyncio.Semaphore(concurrencia)
     resultados: dict[str, Optional[ResultadoScoring]] = {}
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
-            headless=True, args=CHROMIUM_ARGS   # REFACTOR: desde utils.browser
+            headless=True, args=CHROMIUM_ARGS
         )
         logger.info(
             "Browser Chromium lanzado | dominios=%d | concurrencia=%d",
             len(dominios), concurrencia,
         )
 
-        async def _tarea(dominio: str) -> None:
-            async with semaforo:
-                await asyncio.sleep(random.uniform(0.5, 2.5))
-                resultado = await procesar_dominio(
-                    dominio,
-                    min_score_para_log=min_score_para_log,
-                    browser=browser,
-                    forzar_rescraping=forzar_rescraping,
-                )
-                resultados[dominio] = resultado
+        try:
+            async def _tarea(dominio: str) -> None:
+                async with semaforo:
+                    await asyncio.sleep(random.uniform(0.5, 2.5))
+                    resultado = await procesar_dominio(
+                        dominio,
+                        min_score_para_log=min_score_para_log,
+                        browser=browser,
+                        forzar_rescraping=forzar_rescraping,
+                    )
+                    # FIX #1: indentation corrected — same block as resultados write
+                    resultados[dominio] = resultado
                     if on_progress is not None:
                         on_progress(dominio, resultado)
 
-        await asyncio.gather(
-            *[asyncio.create_task(_tarea(d)) for d in dominios],
-            return_exceptions=True,
-        )
-        await browser.close()
-        logger.info("Browser Chromium cerrado.")
+            tasks = [asyncio.create_task(_tarea(d)) for d in dominios]
+
+            # FIX #2: inspect gather results — do not silently swallow exceptions
+            raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            task_failures = 0
+            for dominio, outcome in zip(dominios, raw_results):
+                if isinstance(outcome, BaseException):
+                    task_failures += 1
+                    logger.error(
+                        "Tarea fallida | dominio=%s | %s: %s",
+                        dominio, type(outcome).__name__, str(outcome)[:200],
+                    )
+                    resultados.setdefault(dominio, None)
+                    if on_progress is not None:
+                        on_progress(dominio, None)
+
+            if task_failures:
+                logger.warning(
+                    "Lote completado con %d tareas fallidas de %d total.",
+                    task_failures, len(dominios),
+                )
+
+        finally:
+            # FIX #3: browser closed in finally — survives any exception above
+            await browser.close()
+            logger.info("Browser Chromium cerrado.")
 
     exitosos = sum(1 for v in resultados.values() if v is not None)
     aptos    = sum(1 for v in resultados.values() if v and v.apto_envio_auto)

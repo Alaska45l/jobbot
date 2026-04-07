@@ -18,6 +18,9 @@ from datetime import datetime, timezone
 from threading import Lock as ThreadLock
 from typing import Optional, TypeAlias
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from rich.console import Console
 from rich.live import Live
 
@@ -72,27 +75,48 @@ MAIL_POLL_INTERVAL_S: float = 3.0
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _TUILogHandler(logging.Handler):
-    def __init__(self, buffer: deque[str], lock: ThreadLock) -> None:
+    """
+    Thread-safe log handler that appends formatted records to a shared deque.
+
+    FIX #6: Uses its OWN dedicated lock (_buf_lock) separate from the
+    EstadoBot state lock. The original implementation shared estado._lock
+    between emit() and snapshot(), creating a deadlock if any code path
+    emitted a log record while holding estado._lock.
+
+    The buffer deque is shared by reference with EstadoBot.log_buffer.
+    Reads from snapshot() use EstadoBot._lock; writes here use _buf_lock.
+    The two locks are intentionally disjoint to prevent lock-ordering deadlocks.
+    """
+
+    def __init__(self, buffer: deque[str]) -> None:
         super().__init__()
-        self._buf  = buffer
-        self._lock = lock
+        self._buf      = buffer
+        self._buf_lock = ThreadLock()   # dedicated lock — never shared
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             line = self.format(record)
         except Exception:
             line = record.getMessage()
-        with self._lock:
+        # Only the buffer lock is held here; EstadoBot._lock is never touched.
+        with self._buf_lock:
             self._buf.append(line)
 
 
-def _configurar_logging(buffer: deque[str], lock: ThreadLock) -> None:
+def _configurar_logging(buffer: deque[str]) -> None:
+    """
+    Configures root logger to funnel into the TUI buffer.
+
+    FIX: Handler now owns its own lock. The estado._lock argument
+    is removed — callers no longer need to pass it.
+    """
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     for h in root.handlers[:]:
         root.removeHandler(h)
         h.close()
-    handler = _TUILogHandler(buffer, lock)
+
+    handler = _TUILogHandler(buffer)
     handler.setFormatter(logging.Formatter(
         fmt="%(asctime)s %(levelname).1s [%(name)s] %(message)s",
         datefmt="%H:%M:%S",
@@ -645,7 +669,7 @@ async def _async_main(args: argparse.Namespace) -> None:
     await asyncio.to_thread(init_db)
 
     estado = EstadoBot()
-    _configurar_logging(estado.log_buffer, estado._lock)
+    _configurar_logging(estado.log_buffer)
 
     logger_fn = logging.getLogger("jobbot.main")
     modo = next(m for m in ("dork", "scrape", "mail", "wa", "auto") if getattr(args, m))

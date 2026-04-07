@@ -42,6 +42,7 @@ JobBot es la digitalización de caminar la calle entregando currículums, conver
 ## <img src="https://api.iconify.design/material-symbols/terminal.svg?color=%23007acc" width="24" height="24" align="center"> Uso del Pipeline
 
 El sistema se opera mediante un script wrapper (start_bot.sh) que inyecta las variables de entorno y ejecuta la CLI en tres fases independientes.
+El sistema se opera mediante el orquestador principal (`main.py`) que carga automáticamente las variables de entorno de tu archivo `.env`.
 
 ### Fase 1: Recolección de Semillas (Dorking)
 Alimenta la base de datos local con URLs candidatas basadas en los rubros especificados.
@@ -49,6 +50,8 @@ Alimenta la base de datos local con URLs candidatas basadas en los rubros especi
 ```bash
 ./start_bot.sh --dork --rubros "software house" "clínica" "estudio contable" --limite-dork 30
 ````
+python main.py --dork --rubros "software house" "clínica" "estudio contable" --limite-dork 30
+```
 
 ### Fase 2: Extracción y Scoring (Scraping)
 
@@ -56,6 +59,7 @@ Despliega headless browsers concurrentes para visitar las semillas, extraer corr
 
 ```bash
 ./start_bot.sh --scrape --concurrencia 5
+python main.py --scrape --concurrencia 5
 ```
 
 ### Fase 3: Despacho SMTP (Mailing)

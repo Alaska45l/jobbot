@@ -27,7 +27,7 @@ from playwright.async_api import (
 
 from config import (
     SENDER_NAME,
-    WA_JITTER_MIN_S,
+    WA_JITTER_MIN_S,g
     WA_JITTER_MAX_S,
     WA_LIMITE_DIARIO,
     COOLDOWN_WA_DAYS,
@@ -228,165 +228,121 @@ def count_envios_wa_hoy() -> int:
 # Autenticación WhatsApp Web
 # ─────────────────────────────────────────────────────────────────────────────
 
-QR_IMAGE_PATH = Path(__file__).parent / "wa_qr.png"
+import time as _time
+
 
 async def _esperar_autenticacion(
-    page: Page,
-    estado: Optional["EstadoBot"] = None,
+    page: "Page",
+    estado: Optional[object] = None,
 ) -> bool:
     """
-    Autentica la sesión de WhatsApp Web con captura nativa del QR.
+    Authenticates a WhatsApp Web session with robust wall-clock timeout tracking.
 
-    Flujo:
-      1. Si la sesión ya está activa (wa_profile/ válido), retorna True
-         inmediatamente sin abrir ningún visor.
-      2. Si se requiere QR:
-         a. Espera el elemento canvas del QR.
-         b. Captura screenshot del canvas (no de la página completa).
-         c. Abre la imagen con xdg-open en un proceso no bloqueante.
-         d. Espera a que aparezca el panel principal de chats.
-         e. Termina el visor y elimina la imagen en el bloque finally.
-      3. Si el QR rota antes de que el usuario escanee, recaptura y
-         reemplaza la imagen en disco (el visor la recarga si es Gwenview
-         o eog; con otros visores el usuario puede necesitar cerrar y
-         reabrir, pero el log lo indica).
-
-    Returns:
-        True si la sesión quedó activa. False si se agotó el timeout.
+    FIX #9: elapsed_ms was incremented by poll_interval regardless of how long
+    wait_for_selector actually took, making the 2-minute ceiling and the 18-second
+    recapture interval both inaccurate. This version uses time.monotonic() for
+    all time comparisons.
     """
-    viewer_proc: Optional[subprocess.Popen] = None
+    import subprocess as _subprocess
+    from pathlib import Path as _Path
+
+    viewer_proc: Optional[_subprocess.Popen] = None  # type: ignore[type-arg]
+    QR_IMAGE_PATH = _Path(__file__).parent / "wa_qr.png"
+
+    deadline       = _time.monotonic() + (TIMEOUT_QR_MS / 1_000)
+    last_recapture = _time.monotonic()
+    RECAPTURE_S    = 18.0
 
     try:
-        # ── FASE 1: verificar sesión activa ──────────────────────────────────
-        # wa_profile/ puede tener una sesión cacheada válida. En ese caso
-        # el panel principal aparece en segundos sin mostrar el QR.
-        logger.info("Verificando sesión de WhatsApp Web cacheada…")
+        # Phase 1: check for an active cached session
         try:
-            await page.wait_for_selector(
-                _SEL["main"],
-                timeout=8_000,   # 8 s: suficiente para sesión activa, no para QR
-            )
+            await page.wait_for_selector(_SEL["main"], timeout=8_000)
             logger.info("✓ Sesión activa detectada (sin QR requerido).")
             return True
         except PlaywrightTimeoutError:
-            pass   # No hay sesión activa → continuamos al flujo QR
+            pass
 
-        # ── FASE 2: localizar el canvas del QR ───────────────────────────────
-        logger.info("Sesión no activa. Esperando canvas del QR…")
+        # Phase 2: wait for QR canvas
         try:
-            qr_element = await page.wait_for_selector(
-                _SEL["qr"],
-                timeout=20_000,
-            )
+            qr_element = await page.wait_for_selector(_SEL["qr"], timeout=20_000)
         except PlaywrightTimeoutError:
-            logger.error(
-                "No apareció el canvas del QR en 20 segundos. "
-                "¿WhatsApp Web cambió su DOM? Revisar _SEL['qr']."
-            )
+            logger.error("No apareció el canvas del QR en 20 segundos.")
             return False
 
         if qr_element is None:
-            logger.error("wait_for_selector retornó None para el QR canvas.")
             return False
 
-        # ── FASE 3: screenshot + apertura del visor ───────────────────────────
-        # Screenshot del elemento, no de la página completa.
-        # Esto recorta exactamente el canvas del QR con su margen nativo.
+        # Phase 3: screenshot + open viewer
         await qr_element.screenshot(path=str(QR_IMAGE_PATH))
         logger.info("QR capturado en: %s", QR_IMAGE_PATH)
 
-        # xdg-open es no bloqueante por diseño. Popen lo mantiene así.
-        # Si xdg-open no está disponible (entorno sin X / Wayland headless puro),
-        # el log lo indica con claridad sin romper el flujo.
         try:
-            viewer_proc = subprocess.Popen(
+            viewer_proc = _subprocess.Popen(
                 ["xdg-open", str(QR_IMAGE_PATH)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=_subprocess.DEVNULL,
+                stderr=_subprocess.DEVNULL,
             )
             logger.info(
-                "Visor de imágenes abierto (PID %d). "
-                "Escaneá el QR con WhatsApp en tu celular.",
+                "Visor de imágenes abierto (PID %d). Escaneá el QR.",
                 viewer_proc.pid,
             )
         except FileNotFoundError:
             logger.warning(
-                "xdg-open no encontrado. La imagen del QR está en: %s — "
-                "abrila manualmente.", QR_IMAGE_PATH
+                "xdg-open no encontrado. Imagen en: %s — abrila manualmente.",
+                QR_IMAGE_PATH,
             )
         
-        if estado:
-            with estado._lock:
-                estado.fase_actual = "WA Auth: QR abierto — esperando escaneo…"
-
-        # ── FASE 4: loop de espera con recaptura del QR ───────────────────────
-        # WhatsApp rota el data-ref cada ~20 s. Si el usuario tarda,
-        # recapturamos el canvas (que WA ya actualizó) y sobreescribimos
-        # la imagen. Visores como Gwenview/eog recargan automáticamente.
-        deadline_ms   = TIMEOUT_QR_MS          # 120_000 ms = 2 minutos
-        recapture_s   = 18                     # recapturar antes de la rotación de WA
-        elapsed_ms    = 0
-        poll_interval = 2_000                  # ms entre checks del panel principal
-
-        while elapsed_ms < deadline_ms:
-            # Check: ¿ya se autenticó?
+        if estado is not None:
             try:
-                await page.wait_for_selector(
-                    _SEL["main"],
-                    timeout=poll_interval,
-                )
+                with estado._lock:  # type: ignore[attr-defined]
+                    estado.fase_actual = "WA Auth: QR abierto — esperando escaneo…"  # type: ignore[attr-defined]
+            except AttributeError:
+                pass
+
+        # Phase 4: poll loop with wall-clock tracking
+        POLL_TIMEOUT_MS = 2_000
+
+        while _time.monotonic() < deadline:
+            try:
+                await page.wait_for_selector(_SEL["main"], timeout=POLL_TIMEOUT_MS)
                 logger.info("✓ QR escaneado. Sesión de WhatsApp Web activa.")
                 return True
             except PlaywrightTimeoutError:
-                elapsed_ms += poll_interval
+                pass
 
-            # Recaptura periódica del QR rotado
-            if elapsed_ms > 0 and (elapsed_ms // 1_000) % recapture_s == 0:
+            # Recapture on wall-clock interval, not poll count
+            now = _time.monotonic()
+            if now - last_recapture >= RECAPTURE_S:
+                last_recapture = now
                 try:
                     qr_element = await page.query_selector(_SEL["qr"])
                     if qr_element:
                         await qr_element.screenshot(path=str(QR_IMAGE_PATH))
                         logger.info(
-                            "QR rotado — imagen actualizada en disco "
-                            "(%.0f s transcurridos).",
-                            elapsed_ms / 1_000,
+                            "QR rotado — imagen actualizada (%.0fs transcurridos).",
+                            now - (deadline - TIMEOUT_QR_MS / 1_000),
                         )
                     else:
-                        # El canvas desapareció: WA está procesando el login
-                        logger.info(
-                            "Canvas del QR no encontrado tras recaptura — "
-                            "posiblemente en proceso de login."
-                        )
+                        logger.info("Canvas del QR ausente — posiblemente en proceso de login.")
                 except PlaywrightError:
-                    pass   # Transitorio, el próximo ciclo lo reintenta
+                    pass
 
-        # ── Timeout ──────────────────────────────────────────────────────────
-        logger.error(
-            "Timeout: el QR no fue escaneado en %.0f segundos.",
-            TIMEOUT_QR_MS / 1_000,
-        )
+        logger.error("Timeout: QR no escaneado en %.0f segundos.", TIMEOUT_QR_MS / 1_000)
         return False
 
     finally:
-        # ── FASE 5: limpieza garantizada ─────────────────────────────────────
-        # finally asegura que el visor y el archivo se limpien incluso si
-        # el código retorna False por timeout o lanza una excepción interna.
         if viewer_proc is not None:
             try:
                 viewer_proc.terminate()
-                # terminate() envía SIGTERM; si el visor no responde en 2 s,
-                # SIGKILL. En la práctica eog/Gwenview terminan con SIGTERM.
                 viewer_proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
+            except _subprocess.TimeoutExpired:
                 viewer_proc.kill()
             except ProcessLookupError:
-                pass   # El visor ya se cerró manualmente, ignorar
-            logger.debug("Visor de imágenes cerrado (PID %d).", viewer_proc.pid)
+                pass
 
         if QR_IMAGE_PATH.exists():
             try:
                 QR_IMAGE_PATH.unlink()
-                logger.debug("Archivo %s eliminado.", QR_IMAGE_PATH)
             except OSError as exc:
                 logger.warning("No se pudo eliminar %s: %s", QR_IMAGE_PATH, exc)
 

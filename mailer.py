@@ -18,6 +18,9 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from config import SENDER_NAME, SMTP_JITTER_MIN_S, SMTP_JITTER_MAX_S
 from utils.cv_builder import compilar_cv_dinamico, CVCompilationError
 from db_manager import (
@@ -157,6 +160,7 @@ class ConfigSMTP:
             raise EnvironmentError(
                 f"Variables de entorno faltantes: {', '.join(missing)}. "
                 "Configuralas en start_bot.sh antes de ejecutar el bot."
+                "Configuralas en el archivo .env antes de ejecutar el bot."
             )
         return cls(
             host=os.environ["SMTP_HOST"],
@@ -320,6 +324,43 @@ async def _preparar_adjunto_dinamico(
     return pdf_bytes, filename
 
 
+def _render_template(template: str, **kwargs: str) -> str:
+    """
+    Renders a template string using str.format_map with a SafeMapping that
+    returns the original placeholder for any unknown key instead of raising.
+
+    This is a strict improvement over str.format(**kwargs):
+      - Unknown keys → '{key}' literal in output (no KeyError).
+      - nombres_empresa like '{empresa}' or '{0}' can no longer crash the pipeline.
+      - All known kwargs are still substituted normally.
+
+    Args:
+        template: The format string, e.g. CUERPOS or ASUNTOS entry.
+        **kwargs: Substitution values (nombre_empresa, nombre_remitente, firma).
+
+    Returns:
+        Fully rendered string, never raises.
+    """
+    class _SafeMap(dict):
+        def __missing__(self, key: str) -> str:
+            logger.warning(
+                "Placeholder desconocido '{%s}' en plantilla de email — "
+                "posiblemente proveniente del nombre de empresa. Se preserva literal.",
+                key,
+            )
+            return "{" + key + "}"
+
+    try:
+        return template.format_map(_SafeMap(kwargs))
+    except (ValueError, AttributeError) as exc:
+        # Malformed placeholder like {!invalid} — fall back to the template as-is
+        logger.error(
+            "Error irrecuperable en plantilla | %s: %s | template='%s…'",
+            type(exc).__name__, exc, template[:60],
+        )
+        return template
+
+
 async def _construir_email(
     config: ConfigSMTP,
     destinatario: str,
@@ -350,8 +391,12 @@ async def _construir_email(
         linkedin_user=config.linkedin_user,
     )
 
-    asunto = random.choice(ASUNTOS).format(nombre_empresa=nombre_empresa)
-    cuerpo = random.choice(CUERPOS).format(
+    asunto = _render_template(
+        random.choice(ASUNTOS),
+        nombre_empresa=nombre_empresa,
+    )
+    cuerpo = _render_template(
+        random.choice(CUERPOS),
         nombre_remitente=config.sender_name,
         nombre_empresa=nombre_empresa,
         firma=firma,

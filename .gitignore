@@ -11,6 +11,7 @@ wa_profile/
 # Archivos con credenciales reales
 start_bot.sh
 config.py
+.env
 
 # Currículums personales
 cvs/*.pdf

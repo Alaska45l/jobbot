@@ -101,8 +101,17 @@ NEGATIVE_SIGNALS: Final[dict[str, int]] = {
 # Regex para extraer texto de <meta name="description"> y <title>.
 # _strip_html elimina el contenido de los atributos HTML; estas etiquetas
 # son las más informativas para detectar portales de noticias.
-_RE_META_DESC: Final[re.Pattern[str]] = re.compile(
-    r'<meta\s[^>]*name=["\']description["\']\s[^>]*content=["\'](.*?)["\']',
+# FIX #8: Accept meta description tags regardless of attribute order.
+_RE_META_TAG: Final[re.Pattern[str]] = re.compile(
+    r'<meta\b[^>]*/?>',
+    re.IGNORECASE | re.DOTALL,
+)
+_RE_META_NAME_ATTR: Final[re.Pattern[str]] = re.compile(
+    r'\bname\s*=\s*["\']description["\']',
+    re.IGNORECASE,
+)
+_RE_META_CONTENT_ATTR: Final[re.Pattern[str]] = re.compile(
+    r'\bcontent\s*=\s*(?:"([^"]*?)"|\'([^\']*?)\')',
     re.IGNORECASE | re.DOTALL,
 )
 _RE_TITLE: Final[re.Pattern[str]] = re.compile(
@@ -120,10 +129,22 @@ _GENERAL_PREFIXES: Final[frozenset[str]] = frozenset({
     "gerencia", "oficina", "ventas", "atencion",
 })
 
+# FIX #5: The lookahead now applies only to the domain portion of the address
 _RE_EMAIL: Final[re.Pattern[str]] = re.compile(
-    r'\b([A-Za-z0-9._%+\-]+)@(?!.*(?:\.png|\.jpg|\.jpeg|\.gif|\.webp|\.svg|\.pdf|\.mp4))'
-    r'([A-Za-z0-9.\-]+\.[A-Za-z]{2,})\b',
-    re.IGNORECASE,
+    r"""
+    \b
+    ([A-Za-z0-9._%+\-]+)          # local part
+    @
+    (?!                            # domain must NOT end with a media extension
+        [^\s@,<>"']+              # anchor: only the domain string (no whitespace)
+        (?:\.png|\.jpg|\.jpeg|\.gif|\.webp|\.svg|\.pdf
+          |\.mp4|\.woff|\.woff2|\.min\.js|\.min\.css)
+        \b
+    )
+    ([A-Za-z0-9.\-]+\.[A-Za-z]{2,})  # domain part
+    \b
+    """,
+    re.VERBOSE | re.IGNORECASE,
 )
 _RE_LINKEDIN_PERSON: Final[re.Pattern[str]]  = re.compile(r'linkedin\.com/in/[\w\-]+',      re.IGNORECASE)
 _RE_LINKEDIN_COMPANY: Final[re.Pattern[str]] = re.compile(r'linkedin\.com/company/[\w\-]+', re.IGNORECASE)
@@ -210,26 +231,35 @@ def _contar_keywords(texto: str, keywords: list[str]) -> int:
     )
 
 
+def _extraer_meta_description(html: str) -> str:
+    """
+    Extracts the content of <meta name="description"> regardless of
+    attribute order within the tag.
+
+    Replaces the single regex _RE_META_DESC which assumed name= precedes content=.
+    """
+    for tag_match in _RE_META_TAG.finditer(html):
+        tag_src = tag_match.group(0)
+        if not _RE_META_NAME_ATTR.search(tag_src):
+            continue
+        content_m = _RE_META_CONTENT_ATTR.search(tag_src)
+        if content_m:
+            return content_m.group(1) or content_m.group(2) or ""
+    return ""
+
+
 def _extraer_texto_semantico(html: str) -> str:
     """
-    Extrae el texto que _strip_html descarta: contenido de atributos HTML
-    relevantes para el scoring (title, meta description).
-
-    _strip_html() hace re.sub(r'<[^>]+>', ' ', html), eliminando no solo
-    las etiquetas sino también los valores de sus atributos. Para el QR de
-    noticias el campo más diagnóstico es <meta name="description">, que
-    nunca aparece en el texto plano resultante.
-
-    Returns:
-        String con title + meta description del documento, en minúsculas.
+    Fixed replacement for the original _extraer_texto_semantico.
+    Uses _extraer_meta_description (order-independent) instead of _RE_META_DESC.
     """
     partes: list[str] = []
     m_title = _RE_TITLE.search(html)
     if m_title:
         partes.append(m_title.group(1))
-    m_desc = _RE_META_DESC.search(html)
-    if m_desc:
-        partes.append(m_desc.group(1))
+    desc = _extraer_meta_description(html)
+    if desc:
+        partes.append(desc)
     return " ".join(partes).lower()
 
 

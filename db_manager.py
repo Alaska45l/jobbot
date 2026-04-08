@@ -38,9 +38,6 @@ _DDL_STATEMENTS: tuple[str, ...] = (
     ) STRICT;
     """,
 
-    # v1.2: 'WhatsApp' agregado al CHECK constraint.
-    # NOTA: CREATE TABLE IF NOT EXISTS no modifica tablas existentes.
-    # Si ya tenés una DB, correr la migración del docstring del módulo.
     """
     CREATE TABLE IF NOT EXISTS contactos (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,17 +108,11 @@ def init_db(db_path: Path = DB_PATH) -> None:
     """
     Crea las tablas e índices si no existen y configura los PRAGMAs
     de rendimiento una sola vez por base de datos.
-
-    v1.2 — journal_mode=WAL, synchronous=NORMAL y cache_size movidos
-    aquí desde get_connection. Se ejecutan una única vez al arranque
-    en lugar de en cada una de las N conexiones concurrentes del scraper.
-
-    Idempotente: seguro de llamar múltiples veces.
     """
     with get_connection(db_path) as conn:
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA synchronous = NORMAL;")
-        conn.execute("PRAGMA cache_size = -8000;")   # 8 MB de page cache
+        conn.execute("PRAGMA cache_size = -8000;") 
         for statement in _DDL_STATEMENTS:
             conn.execute(statement)
     logger.info("Base de datos inicializada en: %s", db_path)
@@ -133,39 +124,17 @@ def upsert_empresa(
     rubro: Optional[str] = None,
     perfil_cv: Optional[str] = None,
     score: int = 0,
+    es_seed: bool = False,
 ) -> int:
     """
-    Inserta o actualiza una empresa por dominio (clave única).
-
-    v1.2 — RETURNING id reemplazado por SELECT posterior.
-    RETURNING fue introducido en SQLite 3.35.0 (marzo 2021).
-    Ubuntu 20.04 LTS viene con SQLite 3.31, donde cursor.fetchone()
-    sobre una cláusula RETURNING devuelve None → row_id = 0 →
-    todos los insert_contacto subsiguientes fallan con FK violation
-    silenciosa (INSERT OR IGNORE).
-
-    Returns:
-        ID de la fila insertada o actualizada (siempre > 0).
-
-    Raises:
-        ValueError: Si el dominio está vacío.
+    Inserta o actualiza una empresa por dominio.
+    Si es_seed=True (Dorking), solo inserta si no existe y le pone fecha antigua
+    para no activar el cooldown de scraping falso, y no sobreescribe scores.
     """
     if not dominio or not dominio.strip():
         raise ValueError("El dominio no puede estar vacío.")
 
     dominio = dominio.strip().lower()
-
-    sql_upsert = """
-        INSERT INTO empresas (nombre, dominio, rubro, perfil_cv, score, fecha_scraping)
-        VALUES (:nombre, :dominio, :rubro, :perfil_cv, :score, :fecha)
-        ON CONFLICT(dominio) DO UPDATE SET
-            nombre         = excluded.nombre,
-            rubro          = excluded.rubro,
-            perfil_cv      = excluded.perfil_cv,
-            score          = excluded.score,
-            fecha_scraping = excluded.fecha_scraping;
-    """
-    sql_select = "SELECT id FROM empresas WHERE dominio = ? LIMIT 1;"
 
     params = {
         "nombre":    nombre.strip(),
@@ -176,12 +145,31 @@ def upsert_empresa(
         "fecha":     datetime.now(tz=timezone.utc).isoformat(),
     }
 
+    if es_seed:
+        sql_ejecutar = """
+            INSERT OR IGNORE INTO empresas (nombre, dominio, rubro, perfil_cv, score, fecha_scraping)
+            VALUES (:nombre, :dominio, :rubro, :perfil_cv, :score, '2000-01-01T00:00:00Z');
+        """
+    else:
+        sql_ejecutar = """
+            INSERT INTO empresas (nombre, dominio, rubro, perfil_cv, score, fecha_scraping)
+            VALUES (:nombre, :dominio, :rubro, :perfil_cv, :score, :fecha)
+            ON CONFLICT(dominio) DO UPDATE SET
+                nombre         = excluded.nombre,
+                rubro          = excluded.rubro,
+                perfil_cv      = excluded.perfil_cv,
+                score          = excluded.score,
+                fecha_scraping = excluded.fecha_scraping;
+        """
+
+    sql_select = "SELECT id FROM empresas WHERE dominio = ? LIMIT 1;"
+
     with get_connection() as conn:
-        conn.execute(sql_upsert, params)
+        conn.execute(sql_ejecutar, params)
         row = conn.execute(sql_select, (dominio,)).fetchone()
         row_id: int = row[0] if row else 0
 
-    logger.info("Empresa upserted | dominio=%s | id=%d | score=%d", dominio, row_id, score)
+    logger.info("Empresa upserted | dominio=%s | id=%d | score=%d | seed=%s", dominio, row_id, score, es_seed)
     return row_id
 
 

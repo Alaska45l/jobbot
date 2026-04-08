@@ -2,16 +2,6 @@
 utils/cv_builder.py — JobBot Dynamic CV Builder
 Motor asíncrono para inyección de variables y compilación de CVs con Typst.
 
-Flujo:
-  1. Verifica que el binario `typst` esté disponible en PATH.
-  2. Lee cvs/template.typ desde disco.
-  3. Reemplaza {{ EMPRESA }} y {{ KEYWORDS }} con los valores recibidos.
-  4. Escribe la plantilla renderizada en un TemporaryDirectory (autodestruct).
-  5. Ejecuta `typst compile input.typ output.pdf` vía asyncio.create_subprocess_exec
-     → NO bloquea el event loop. El proceso Typst corre en paralelo.
-  6. Lee los bytes del PDF resultante y limpia el directorio temporal.
-  7. Retorna bytes o lanza CVCompilationError con mensaje diagnóstico claro.
-
 Python: 3.11+
 Dependencias externas: typst CLI en PATH (no es un paquete Python)
 Dependencias Python: stdlib únicamente (asyncio, tempfile, shutil, pathlib, logging)
@@ -67,6 +57,7 @@ class CVCompilationError(Exception):
     El mensaje siempre incluye suficiente contexto para diagnosticar sin
     tener que revisar los logs — incluye empresa, stderr de typst y código.
     """
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -74,15 +65,7 @@ class CVCompilationError(Exception):
 # ---------------------------------------------------------------------------
 
 async def _verificar_typst() -> None:
-    """
-    Verifica que `typst` esté en PATH antes de intentar compilar.
 
-    Usa shutil.which en un thread (I/O de filesystem) para no bloquear
-    el event loop. Falla temprano con un mensaje de instalación claro.
-
-    Raises:
-        CVCompilationError: Si el binario no está disponible.
-    """
     disponible = await asyncio.to_thread(shutil.which, "typst")
     if disponible is None:
         raise CVCompilationError(

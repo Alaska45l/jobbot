@@ -1,7 +1,5 @@
 """
 utils/browser.py — JobBot Browser Utilities
-Configuración unificada de Playwright: argumentos de lanzamiento de Chromium
-y script de anti-detección de automatización.
 
 Python: 3.11+
 Dependencias: playwright

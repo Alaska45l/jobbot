@@ -11,17 +11,6 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-# ---------------------------------------------------------------------------
-# Regex — Números de WhatsApp con formato argentino
-#
-#  Grupo 1 — Formato wa.me:         wa.me/5492231234567
-#  Grupo 2 — E.164 con área separada: +54 9 223 123 4567
-#  Grupo 3 — Nacional con 0:        0223 123-4567
-#  Grupo 4 — Local directo MdP:     223 123 4567
-#
-#  El patrón exige al menos 7 dígitos después del código de área
-#  para evitar falsos positivos (versiones de SW, fechas, etc.).
-# ---------------------------------------------------------------------------
 _RE_WHATSAPP: re.Pattern[str] = re.compile(
     r"""
     (?:

@@ -146,15 +146,6 @@ _ESTADOS_ACTIVOS: frozenset[str] = frozenset({"Scrapeando", "Semilla"})
 
 @dataclass
 class EstadoBot:
-    """
-    Mutable state shared between asyncio event loop and the Rich refresh
-    thread. All writes are lock-protected; reads use snapshot().
-
-    v2.3 additions:
-      - emails_ok / emails_fail  — fine-grained SMTP counters for the TUI.
-      - wa_ok / wa_fail          — WhatsApp send counters.
-      - target                   — currently active domain / rubro / empresa.
-    """
     fase_actual: str      = "Iniciando…"
     inicio:      datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -233,7 +224,6 @@ class EstadoBot:
             self.target          = "—"
 
     def snapshot(self) -> dict:
-        """Atomic copy of state. The render loop uses this without holding the lock."""
         with self._lock:
             return {
                 "fase_actual":         self.fase_actual,
@@ -270,13 +260,6 @@ class EstadoBot:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_ui_metrics(snap: dict) -> dict:
-    """
-    Pure function — no side effects, no locks. Called once per refresh tick.
-
-    Maps EstadoBot field names to the telemetry keys consumed by
-    jobbot_tui._telemetry_panel(). This indirection means EstadoBot and
-    jobbot_tui remain completely decoupled; neither imports the other.
-    """
     terminados = snap.get("terminados", [])
     scored_ok  = sum(1 for r in terminados if r.get("estado") == "OK")
 
@@ -310,10 +293,6 @@ def _build_ui_metrics(snap: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def cargar_rubros(ruta_archivo: str = "rubros.txt") -> list[str]:
-    """
-    Carga la lista de rubros dinámicamente desde un archivo de texto.
-    Ignora las líneas vacías y las que empiezan con '#' (comentarios).
-    """
     logger = logging.getLogger("jobbot.main")
     ruta = Path(ruta_archivo)
     
@@ -372,13 +351,6 @@ async def _ddgs_con_retry(
     max_results: int,
     max_intentos: int = 3,
 ) -> list[dict]:
-    """
-    Wrapper around _ddgs_text_sync with exponential back-off for rate limits.
-    DuckDuckGo actively rate-limits bots; a single block without adequate
-    sleep silences the entire dorking session.
-
-    Back-off schedule: attempt 0 → ~30 s, attempt 1 → ~60 s, attempt 2 → fail.
-    """
     logger_fn = logging.getLogger("jobbot.dork")
 
     for intento in range(max_intentos):
@@ -411,7 +383,6 @@ async def _ddgs_con_retry(
 
 
 def _query_mail_stats_db() -> dict[str, int]:
-    """Polls today's send statistics directly from SQLite for the mail progress bar."""
     sql = """
         SELECT
             COUNT(*)                                               AS total,
@@ -476,7 +447,7 @@ async def recolectar_urls_semilla(
             try:
                 await asyncio.to_thread(
                     upsert_empresa,
-                    nombre=titulo, dominio=dominio, rubro=rubro, score=0,
+                    nombre=titulo, dominio=dominio, rubro=rubro, score=0, es_seed=True,
                 )
                 insertados += 1
                 logger_fn.info("Semilla | %s | %s", dominio, rubro)

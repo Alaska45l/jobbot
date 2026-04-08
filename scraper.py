@@ -351,10 +351,6 @@ async def procesar_dominio(
                 logger.error("No se pudo cargar la home | dominio=%s", dominio_base)
                 return ""
 
-            # FIX v1.2: list + join en lugar de +=
-            # Con += cada iteración crea una nueva string en memoria.
-            # Con páginas de 200–500 KB y 10 sub-páginas por dominio,
-            # se generaban ~10 objetos intermedios de hasta 5 MB cada uno.
             html_parts = [html_home]
             for _, html_pagina in await _navegar_rutas_prioritarias(
                 page, url_base, dominio_base, enlaces_home

@@ -325,22 +325,6 @@ async def _preparar_adjunto_dinamico(
 
 
 def _render_template(template: str, **kwargs: str) -> str:
-    """
-    Renders a template string using str.format_map with a SafeMapping that
-    returns the original placeholder for any unknown key instead of raising.
-
-    This is a strict improvement over str.format(**kwargs):
-      - Unknown keys → '{key}' literal in output (no KeyError).
-      - nombres_empresa like '{empresa}' or '{0}' can no longer crash the pipeline.
-      - All known kwargs are still substituted normally.
-
-    Args:
-        template: The format string, e.g. CUERPOS or ASUNTOS entry.
-        **kwargs: Substitution values (nombre_empresa, nombre_remitente, firma).
-
-    Returns:
-        Fully rendered string, never raises.
-    """
     class _SafeMap(dict):
         def __missing__(self, key: str) -> str:
             logger.warning(
@@ -444,13 +428,6 @@ async def procesar_envios_pendientes(
     CAMBIO v2.0: función async.
     El jitter usa await asyncio.sleep() — no bloquea el event loop
     durante las esperas de 3–8 minutos entre envíos.
-
-    CAMBIO EN main.py REQUERIDO:
-    En pipeline_mail, reemplazar:
-        asyncio.to_thread(procesar_envios_pendientes, min_score=..., ...)
-    Por:
-        procesar_envios_pendientes(min_score=..., ...)
-    (ya es coroutine, no necesita to_thread)
 
     Args:
         min_score:       Score mínimo para considerar una empresa apta.

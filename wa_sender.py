@@ -1,6 +1,8 @@
 """
 wa_sender.py — JobBot WhatsApp Web Sender
 
+Maten a zuckerberg
+
 Python: 3.11+
 Dependencias: playwright (async), asyncio, urllib (stdlib)
 """
@@ -51,19 +53,6 @@ TIMEOUT_CHAT_MS:     int = 45_000
 TIMEOUT_SEND_BTN_MS: int = 20_000
 TIMEOUT_POPUP_MS:    int = 5_000
 TIMEOUT_NAV_MS:      int = 30_000
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Selectores de WhatsApp Web — versionados
-#
-# Última verificación: 2026-Q1
-# Si el login falla, probar con estos alternativos:
-#   "qr":   'div[data-js-state="disconnected"] canvas'
-#   "main": 'div[role="main"][tabindex="-1"]'
-#   "send": 'button[data-testid="compose-btn-send"]'
-#
-# Centralizar aquí facilita actualizaciones cuando WA cambia su DOM
-# sin tener que buscar strings dispersos por todo el módulo.
-# ─────────────────────────────────────────────────────────────────────────────
 
 _SEL: dict[str, str | tuple[str, ...]] = {
     "qr":   'canvas[aria-label], [data-testid="qrcode"]',

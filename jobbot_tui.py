@@ -3,9 +3,6 @@ jobbot_tui.py — JobBot TUI Presentation Layer
 Teenage Engineering / Dieter Rams aesthetic: Minimalist Retro-Futurism.
 "Less, but better."
 
-Drop-in replacement for the render_dashboard() in main.py.
-NO async logic is touched. Only the presentation layer.
-
 Python: 3.11+
 Dependencias: rich
 """
@@ -37,7 +34,7 @@ class P:
     CHROME   = "#D4D4D8"   # foreground / body text
     MATTE    = "#A1A1AA"   # secondary / dim text
     CHASSIS  = "#3F3F46"   # borders, idle elements, sleep eyes
-    VOID     = "#18181B"   # deep background reference (not directly settable in Rich)
+    VOID     = "#18181B"   # deep background reference
 
     # Accent primaries — one at a time, never mixed
     ORANGE   = "#FF6B35"   # active / alert / dorking  (TE Signal Orange)
@@ -101,8 +98,8 @@ class JobMascot:
             ("    ██  ██  ██                  ██  \n", self.CAT_BODY),
             ("    ██    ██  ██              ██    \n", self.CAT_BODY),
             ("      ██    ██████          ██      \n", self.CAT_BODY),
-            ("        ██                  ██      \n", self.CAT_BODY),
-            ("        ██████████████  ██  ██      \n", self.CAT_BODY),
+            ("        ██             ██   ██      \n", self.CAT_BODY),
+            ("        ██████████████████████      \n", self.CAT_BODY),
             ("                                    \n", self.CAT_BODY),
             ("                                    ", self.CAT_BODY),
         )
@@ -223,7 +220,6 @@ class JobMascot:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DASHBOARD — generate_dashboard()
-# The ONLY function that should be called from main.py's Live loop.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _mascot = JobMascot()
@@ -308,15 +304,10 @@ def _qr_panel(qr_data: str) -> Panel:
             else:                   row_str += " "
         lines.append(row_str)
 
-    # Estilo en el objeto Text, no por carácter.
-    # "white on black" fuerza el contraste correcto independientemente
-    # del tema de terminal (Arch/KDE Plasma con paleta oscura transparente).
     qr_content = Text(
         "\n".join(lines),
         style="white on black",
         justify="center",
-        # Sin no_wrap ni overflow: Rich renderiza el ancho natural del QR.
-        # El Layout con minimum_size=88 garantiza que haya espacio.
     )
 
     return Panel(
@@ -326,7 +317,7 @@ def _qr_panel(qr_data: str) -> Panel:
         border_style="bright_blue",
         box=box.DOUBLE_EDGE,
         padding=(1, 2),
-        expand=False,   # El panel no se estira: el QR mantiene su geometría.
+        expand=False,
     )
 
 
@@ -534,60 +525,6 @@ def metrics_from_estado(snap: dict) -> dict:
         "wa_daily_cap":     30,
         "wa_qr_data":       snap.get("wa_qr_data", ""),
     }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HOW TO WIRE INTO main.py — replace _async_main()'s Live block with this:
-# ─────────────────────────────────────────────────────────────────────────────
-#
-#   from jobbot_tui import generate_dashboard, bot_state_from_phase, metrics_from_estado
-#
-#   async def _async_main(args):
-#       ...
-#       tick = 0
-#
-#       async def _refresh_loop(live: Live) -> None:
-#           nonlocal tick
-#           while not stop_event.is_set():
-#               snap    = estado.snapshot()
-#               state   = bot_state_from_phase(snap["fase_actual"])
-#               metrics = metrics_from_estado(snap)
-#               layout  = generate_dashboard(
-#                   state   = state,
-#                   metrics = metrics,
-#                   logs    = snap["log_lines"],
-#                   elapsed = snap["elapsed"],
-#                   phase   = snap["fase_actual"].upper(),
-#                   tick    = tick,
-#               )
-#               try:
-#                   live.update(layout, refresh=True)
-#               except Exception:
-#                   pass
-#               tick += 1
-#               await asyncio.sleep(DASHBOARD_REFRESH_S)
-#
-#       with Live(
-#           generate_dashboard(BotState.IDLE, {}, [], tick=0),
-#           auto_refresh=False,
-#           screen=False,
-#           redirect_stderr=False,
-#       ) as live:
-#           refresh_task = asyncio.create_task(_refresh_loop(live))
-#           try:
-#               if   args.dork:   await pipeline_dork(args, estado)
-#               elif args.scrape: await pipeline_scrape(args, estado)
-#               elif args.mail:   await pipeline_mail(args, estado)
-#               elif args.wa:     await pipeline_wa(args, estado)
-#               elif args.auto:   await pipeline_auto(args, estado)
-#           finally:
-#               stop_event.set()
-#               refresh_task.cancel()
-#               try:   await refresh_task
-#               except asyncio.CancelledError: pass
-#               live.update(generate_dashboard(state, metrics, snap["log_lines"]))
-#
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ─────────────────────────────────────────────────────────────────────────────

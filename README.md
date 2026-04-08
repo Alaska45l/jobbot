@@ -1,128 +1,108 @@
-
 <div align="center">
-  <h1>JobBot v2.3</h1>
-  <p><strong>Automated OSINT and Prospecting Pipeline for Targeted Job Searching</strong></p>
+  <h1>JobBot v2.4</h1>
+  <p><strong>Automated OSINT, Stealth Scraping & Dynamic Pipeline for Targeted Job Searching</strong></p>
 
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/Playwright-Async-2EAD33?style=flat-square&logo=playwright&logoColor=white" alt="Playwright">
+  <img src="https://img.shields.io/badge/Playwright-Stealth-2EAD33?style=flat-square&logo=playwright&logoColor=white" alt="Playwright">
+  <img src="https://img.shields.io/badge/Typst-Dynamic_CV-239BBE?style=flat-square&logo=typst&logoColor=white" alt="Typst">
   <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite3">
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License MIT">
 </div>
 
 ---
 
-JobBot es un pipeline asíncrono de prospección y contacto automatizado diseñado para búsquedas laborales dirigidas. Utiliza técnicas de dorking para recolección de objetivos, scraping sigiloso para extracción de datos de contacto (Management/HR) y un motor SMTP con rate-limiting para el envío de currículums contextualizados según un sistema de Lead Scoring.
+JobBot es un pipeline asíncrono de prospección B2B y contacto automatizado. Utiliza técnicas de dorking a nivel nacional para recolección de objetivos, scraping con evasión de firewalls (WAFs) para extraer datos de contacto, y un motor SMTP/WhatsApp que compila y envía currículums hiper-personalizados al vuelo.
 
 ## <img src="https://api.iconify.design/material-symbols/lightbulb.svg?color=%23007acc" width="24" height="24" align="center"> Why JobBot? (Architecture & Philosophy)
 
-JobBot nace de una necesidad real y de la frustración con el ecosistema actual de reclutamiento. Después de meses de enviar solicitudes a través de portales tradicionales (ZonaJobs, Randstad, Bumeran, LinkedIn) con tasas de respuesta bajísimas, decidí cambiar la estrategia y volver a lo básico: entregar el CV directamente en la puerta de la empresa. Pero en lugar de hacerlo a pie una tarde de lluvia, decidí automatizarlo.
+JobBot es la digitalización de "caminar la calle entregando currículums", pero con una arquitectura de grado servidor.
 
-Al buscar herramientas de automatización de Cold Emailing u OSINT en GitHub, me encontré con un problema: casi todos los repositorios actuales son simples "wrappers" que requieren tarjetas de crédito para pagar costosas APIs de IA generativa (OpenAI, Claude) solo para leer un HTML básico.
-
-Por eso construí JobBot bajo una filosofía técnica estricta:
-
-* Determinismo sobre Alucinación: El bot no utiliza LLMs para tareas de clasificación. Emplea un motor léxico propio en Python puro con expresiones regulares y diccionarios ponderados. Evalúa reglas estrictas para decidir qué CV enviar sin equivocarse.
-
-* Costo Cero y Eficiencia: Arquitectura asíncrona (asyncio + Playwright) diseñada para consumir recursos mínimos. Un solo proceso de Chromium maneja múltiples contextos, permitiendo que el orquestador corra localmente sin gastar un centavo en tokens de API.
-
-* OSINT de "Delicada Fuerza Bruta": En lugar de hacer spam ciego, el bot utiliza búsquedas inteligentes para mapear la red de empresas locales (Mar del Plata), sortea filtros, raspa correos de Recursos Humanos y aplica rate-limiting (Jitter) para cuidar la reputación del servidor SMTP.
-
-JobBot es la digitalización de caminar la calle entregando currículums, convertido en un pipeline asíncrono.
-
-## <img src="https://api.iconify.design/material-symbols/account-tree.svg?color=%23007acc" width="24" height="24" align="center"> Arquitectura y Características
-
-* **Dorking Engine**: Automatiza consultas avanzadas (operadores site:, intext:) en motores de búsqueda para sembrar la base de datos con dominios relevantes por zona y rubro.
-* **Stealth Scraper (Playwright)**: Navegación asíncrona concurrente con evasión de huellas (webdriver spoofing, rotación de User-Agents/Viewports). Bloqueo de carga de media a nivel de red para optimización de ancho de banda.
-* **Lead Scoring**: Analizador léxico local que evalúa el HTML renderizado para asignar un puntaje de relevancia (0-100+) y decidir qué perfil de CV (CV_Tech o CV_Admin_IT) se adapta mejor a la empresa objetivo.
-* **Smart Dispatcher**: Cliente SMTP con soporte para Dry-Run, manejo de colas y tiempos de espera aleatorios (jitter) para evadir filtros de spam y bloqueos de cuenta.
-* **Estado Persistente**: Sistema de cooldown de 90 días por dominio y registro de campañas basado en SQLite para evitar envíos duplicados.
+* **Determinismo sobre Alucinación:** El bot no utiliza LLMs para tareas de clasificación. Emplea un motor léxico propio en Python puro con expresiones regulares para decidir el score del prospecto sin equivocarse.
+* **Evasión Stealth:** Supera protecciones como Cloudflare o Datadome utilizando `playwright-stealth`, rotación de contextos, spoofing de zona horaria y simulación de biometría humana (movimientos de mouse y scroll aleatorio).
+* **CVs Mutantes (Typst):** En lugar de enviar un PDF genérico, el orquestador lee la web de la empresa e inyecta las *keywords* exactas de la compañía en una plantilla Typst, compilando un PDF único en milisegundos antes de enviarlo.
+* **Daemon 24/7 Resiliente:** Diseñado para correr de fondo en `tmux`. Cuenta con manejo seguro de señales de apagado (`SIGTERM`), timeouts estrictos anti-livelock y pausas aleatorias (Jitter) para evitar baneos de IP o de cuenta SMTP.
 
 ---
 
-## <img src="https://api.iconify.design/material-symbols/terminal.svg?color=%23007acc" width="24" height="24" align="center"> Uso del Pipeline
+## <img src="https://api.iconify.design/material-symbols/layers-outline.svg?color=%23007acc" width="24" height="24" align="center"> Arquitectura y Características
 
-El sistema se opera mediante un script wrapper (start_bot.sh) que inyecta las variables de entorno y ejecuta la CLI en tres fases independientes.
-El sistema se opera mediante el orquestador principal (`main.py`) que carga automáticamente las variables de entorno de tu archivo `.env`.
+* **Dorking Engine Nacional:** Automatiza consultas avanzadas leyendo listas de rubros dinámicas desde un archivo externo (`rubros.txt`).
+* **Rich TUI (Terminal User Interface):** Un panel de control y telemetría inspirado en la estética retro-futurista de terminales de monitoreo.
+* **Módulo WhatsApp Web:** Despacho automatizado de mensajes de presentación directa a líneas celulares extraídas de la web, con manejo de sesiones locales y rate-limits adaptables.
+* **Smart Dispatcher (SMTP):** Cliente de correo con soporte para Dry-Run y colas asíncronas.
 
-### Fase 1: Recolección de Semillas (Dorking)
-Alimenta la base de datos local con URLs candidatas basadas en los rubros especificados.
+---
 
-```bash
-./start_bot.sh --dork --rubros "software house" "clínica" "estudio contable" --limite-dork 30
-````
-python main.py --dork --rubros "software house" "clínica" "estudio contable" --limite-dork 30
-```
+## <img src="https://api.iconify.design/material-symbols/settings-outline.svg?color=%23007acc" width="24" height="24" align="center"> Configuración del Entorno
 
-### Fase 2: Extracción y Scoring (Scraping)
+### 1. Variables de Entorno (`.env`)
+Crear un archivo `.env` en la raíz del proyecto para credenciales sensibles:
 
-Despliega headless browsers concurrentes para visitar las semillas, extraer correos corporativos y perfiles de LinkedIn, y calcular el score de la empresa.
-
-```bash
-./start_bot.sh --scrape --concurrencia 5
-python main.py --scrape --concurrencia 5
-```
-
-### Fase 3: Despacho SMTP (Mailing)
-
-Filtra los objetivos por puntaje mínimo y ejecuta el envío de correos. Se recomienda encarecidamente usar --dry-run primero para auditar la construcción de los mensajes de forma segura.
-
-```bash
-# Auditoría en terminal (No abre conexión SMTP)
-./start_bot.sh --mail --dry-run --min-score 30
-
-# Ejecución real en lotes de 10 envíos
-./start_bot.sh --mail --min-score 30 --limite 10
-```
-
------
-
-## <img src="https://api.iconify.design/material-symbols/tune.svg?color=%23007acc" width="24" height="24" align="center"> Referencia CLI
-
-| Argumento | Tipo | Default | Descripción |
-| :--- | :--- | :--- | :--- |
-| --dork | Flag | False | Ejecuta el módulo de búsqueda (DuckDuckGo). |
-| --rubros | List | (Internos) | Rubros a buscar (ej. "QA testing" "soporte técnico"). |
-| --limite-dork | Int | 10 | Cantidad de dominios a extraer por rubro. |
-| --scrape | Flag | False | Ejecuta el módulo Playwright de extracción. |
-| --concurrencia | Int | 3 | Threads de Playwright en paralelo. |
-| --mail | Flag | False | Ejecuta el motor SMTP. |
-| --min-score | Int | 55 | Puntaje mínimo de la DB para considerar la empresa apta. |
-| --limite | Int | 0 | Máximo de correos a despachar en la ejecución actual. |
-| --dry-run | Flag | False | Simula el envío y loguea el output generado sin enviar. |
-
------
-
-## <img src="https://api.iconify.design/material-symbols/settings.svg?color=%23007acc" width="24" height="24" align="center"> Configuración del Entorno
-
-JobBot requiere credenciales válidas y configuración de variables de entorno para operar. Estas deben definirse en el archivo start\_bot.sh:
-
-```bash
+```env
 # Servidor SMTP (Recomendado: Gmail con App Password)
-export SMTP_HOST="smtp.gmail.com"
-export SMTP_PORT="587"
-export SMTP_USER="tu_correo@gmail.com"
-export SMTP_PASS="tu_app_password_de_16_caracteres"
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_USER="tu_correo@gmail.com"
+SMTP_PASS="tu_app_password_de_16_caracteres"
 
 # Perfil del Remitente
-export SENDER_NAME="Tu Nombre"
-export GITHUB_USER="TuUsuarioGitHub"
-export LINKEDIN_USER="TuUsuarioLinkedIn"
+SENDER_NAME="Tu Nombre"
+GITHUB_USER="TuUsuarioGitHub"
+LINKEDIN_USER="TuUsuarioLinkedIn"
 ```
 
-**Estructura de Directorios Requerida:**
-Los archivos PDF deben ubicarse en la carpeta cvs/ en la raíz del proyecto para que el motor de adjuntos los detecte:
+### 2\. Dependencias Externas del Sistema
 
-  * cvs/CV\_Tech.pdf
-  * cvs/CV\_Admin\_IT.pdf
+  * **Typst:** Se requiere el binario de Typst en el `PATH` para la compilación dinámica de CVs (`cargo install typst-cli` o vía su repositorio oficial).
+  * **Plantilla Base:** La plantilla a renderizar debe ubicarse en `cvs/template.typ` (opcional: imagen en `cvs/perfil.jpg`).
+
+-----
+
+## <img src="https://api.iconify.design/material-symbols/terminal.svg?color=%23007acc" width="24" height="24" align="center"> Uso del Pipeline
+
+El sistema se opera mediante el orquestador principal (`main.py`).
+
+### Modo Daemon (Recomendado)
+
+Ejecuta el ciclo completo (Dork -\> Scrape -\> Mail) en un loop infinito con manejo de timeouts y descansos anti-ban.
+
+```bash
+python main.py --auto --concurrencia 3
+```
+
+### Ejecuciones Manuales (Por Fases)
+
+**Fase 1: Recolección de Semillas (Dorking)**
+
+```bash
+python main.py --dork --rubros-file rubros.txt --limite-dork 30
+```
+
+**Fase 2: Extracción y Scoring (Scraping)**
+
+```bash
+python main.py --scrape --concurrencia 3
+```
+
+**Fase 3: Despacho (Mailing o WhatsApp)**
+
+```bash
+# Auditoría en terminal (Dry-Run: No acciona envíos reales)
+python main.py --mail --dry-run --min-score 55
+python main.py --wa --dry-run
+
+# Ejecución real
+python main.py --mail --min-score 55
+python main.py --wa
+```
 
 -----
 
 ## <img src="https://api.iconify.design/material-symbols/database.svg?color=%23007acc" width="24" height="24" align="center"> Gestión de Base de Datos
 
-Toda la metadata se almacena en jobbot.db. Para reiniciar métricas, liberar el cooldown de 90 días o realizar un borrado de la base (Wipe), utilice su cliente SQL preferido (ej. sqlite3):
+Toda la metadata se almacena en `jobbot.db`. Para reiniciar métricas, liberar el cooldown de 90 días o realizar un borrado de la base (Wipe), utilice su cliente SQL preferido:
 
 ```sql
--- Limpiar historial de envíos (reinicia el cooldown)
+-- Limpiar historial de envíos (reinicia el cooldown de SMTP)
 DELETE FROM campanas_envios;
 
 -- Wipe total (Borrar inteligencia recolectada)
@@ -132,4 +112,16 @@ DELETE FROM empresas;
 
 -----
 
-*Disclaimer: Esta herramienta está diseñada para uso personal y optimización de tiempo. Configure siempre rate-limits responsables y evite enviar correos no solicitados a objetivos de baja puntuación.*
+## <img src="https://api.iconify.design/material-symbols/list-alt-outline.svg?color=%23007acc" width="24" height="24" align="center"> Referencia CLI
+
+| Argumento | Tipo | Default | Descripción |
+| :--- | :--- | :--- | :--- |
+| `--auto` | Flag | False | Inicia el Daemon de ejecución continua 24/7. |
+| `--dork` | Flag | False | Ejecuta el módulo de búsqueda OSINT. |
+| `--rubros-file` | String | rubros.txt | Archivo txt con la lista dinámica de rubros. |
+| `--scrape` | Flag | False | Ejecuta el módulo Playwright Stealth. |
+| `--concurrencia` | Int | 3 | Threads de navegadores en paralelo. |
+| `--mail` | Flag | False | Ejecuta el motor SMTP con Typst. |
+| `--wa` | Flag | False | Ejecuta el motor de envíos por WhatsApp Web. |
+| `--min-score` | Int | 55 | Puntaje mínimo de la DB para prospectar. |
+| `--dry-run` | Flag | False | Simula el envío sin accionar SMTP/WA. |

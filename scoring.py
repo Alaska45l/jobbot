@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Final
 
-from utils.phone import extraer_numeros_whatsapp   # FIX: ya no importa wa_sender
+from utils.phone import extraer_numeros_whatsapp
 
 logger = logging.getLogger("jobbot.scoring")
 
@@ -72,7 +72,6 @@ RUBRO_WEIGHTS: Final[dict[str, dict[str, int | str | list]]] = {
 #       son exactamente el perfil CV_Tech que queremos contactar.
 
 NEGATIVE_SIGNALS: Final[dict[str, int]] = {
-    # Portales de noticias / medios (exclusión casi segura)
     "últimas noticias":      -90,
     "redacción":             -80,
     "cobertura periodística":-80,
@@ -80,10 +79,9 @@ NEGATIVE_SIGNALS: Final[dict[str, int]] = {
     "sala de prensa":        -70,
     "nota de prensa":        -60,
 
-    # Patrones de blog (señales de contenido, no de empresa)
-    "escribir un comentario": -70,   # footer de comentarios WP/Ghost
-    "publicado por":          -40,   # byline de autor
-    "deja una respuesta":     -60,   # WP comment form label
+    "escribir un comentario": -70,
+    "publicado por":          -40,
+    "deja una respuesta":     -60,
     "suscribirse al blog":    -60,
     "leer el artículo":       -30,
 
@@ -91,7 +89,7 @@ NEGATIVE_SIGNALS: Final[dict[str, int]] = {
     "agregar al carrito":     -60,
     "añadir al carrito":      -60,
     "mi carrito de compras":  -50,
-    "checkout":               -40,   # puede coexistir con B2B, peso moderado
+    "checkout":               -40,
 
     # Sitios personales / CV online
     "este es mi portfolio":   -80,
@@ -101,7 +99,6 @@ NEGATIVE_SIGNALS: Final[dict[str, int]] = {
 # Regex para extraer texto de <meta name="description"> y <title>.
 # _strip_html elimina el contenido de los atributos HTML; estas etiquetas
 # son las más informativas para detectar portales de noticias.
-# FIX #8: Accept meta description tags regardless of attribute order.
 _RE_META_TAG: Final[re.Pattern[str]] = re.compile(
     r'<meta\b[^>]*/?>',
     re.IGNORECASE | re.DOTALL,
@@ -129,19 +126,18 @@ _GENERAL_PREFIXES: Final[frozenset[str]] = frozenset({
     "gerencia", "oficina", "ventas", "atencion",
 })
 
-# FIX #5: The lookahead now applies only to the domain portion of the address
 _RE_EMAIL: Final[re.Pattern[str]] = re.compile(
     r"""
     \b
-    ([A-Za-z0-9._%+\-]+)          # local part
+    ([A-Za-z0-9._%+\-]+)
     @
-    (?!                            # domain must NOT end with a media extension
-        [^\s@,<>"']+              # anchor: only the domain string (no whitespace)
+    (?!                            
+        [^\s@,<>"']+              
         (?:\.png|\.jpg|\.jpeg|\.gif|\.webp|\.svg|\.pdf
           |\.mp4|\.woff|\.woff2|\.min\.js|\.min\.css)
         \b
     )
-    ([A-Za-z0-9.\-]+\.[A-Za-z]{2,})  # domain part
+    ([A-Za-z0-9.\-]+\.[A-Za-z]{2,})
     \b
     """,
     re.VERBOSE | re.IGNORECASE,
@@ -189,8 +185,6 @@ class ResultadoScoring:
     apto_envio_auto: bool                    = field(init=False)
 
     def __post_init__(self) -> None:
-        # El check usa score_total sin floor: un sitio con -100 debe quedar excluido.
-        # El floor (-20) solo existe para la TUI; se aplica en scoring_to_dict().
         self.apto_envio_auto = self.score_total >= self.umbral_auto
 
     @property
@@ -232,12 +226,6 @@ def _contar_keywords(texto: str, keywords: list[str]) -> int:
 
 
 def _extraer_meta_description(html: str) -> str:
-    """
-    Extracts the content of <meta name="description"> regardless of
-    attribute order within the tag.
-
-    Replaces the single regex _RE_META_DESC which assumed name= precedes content=.
-    """
     for tag_match in _RE_META_TAG.finditer(html):
         tag_src = tag_match.group(0)
         if not _RE_META_NAME_ATTR.search(tag_src):
@@ -249,10 +237,6 @@ def _extraer_meta_description(html: str) -> str:
 
 
 def _extraer_texto_semantico(html: str) -> str:
-    """
-    Fixed replacement for the original _extraer_texto_semantico.
-    Uses _extraer_meta_description (order-independent) instead of _RE_META_DESC.
-    """
     partes: list[str] = []
     m_title = _RE_TITLE.search(html)
     if m_title:
@@ -451,11 +435,11 @@ def scoring_to_dict(resultado: ResultadoScoring) -> dict:
     return {
         "perfil_cv":       resultado.perfil_cv,
         "score_total":     resultado.score_total,
-        "score_display":   resultado.score_display,      # NUEVO: flooreado para TUI
+        "score_display":   resultado.score_display,
         "umbral_auto":     resultado.umbral_auto,
         "rubro_detectado": resultado.rubro_detectado,
         "keyword_matches": resultado.keyword_matches,
-        "penalty_matches": resultado.penalty_matches,    # NUEVO: trazabilidad
+        "penalty_matches": resultado.penalty_matches,
         "tiene_form_solo": resultado.tiene_form_solo,
         "apto_envio_auto": resultado.apto_envio_auto,
         "contactos": [

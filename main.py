@@ -1,5 +1,5 @@
 """
-main.py — JobBot Orchestrator v2.3
+main.py — JobBot Orchestrator v2.4
 Pipeline completo: OSINT Dorking → Async Scraping → Lead Scoring → Cold Email
 
 Python: 3.11+
@@ -70,56 +70,41 @@ MAX_ACTIVOS_ROWS:     int   = 6
 MAX_LOG_LINES:        int   = 14
 DASHBOARD_REFRESH_S:  float = 0.25
 MAIL_POLL_INTERVAL_S: float = 3.0
+_CYCLE_TIMEOUT_S: float = 86_400.0
 
-# Maximum wall-clock time for a single complete dork→scrape→mail cycle.
-_CYCLE_TIMEOUT_S: float = 4 * 3600.0
-# Exponential backoff on consecutive cycle failures.
 _BACKOFF_BASE_S:  float = 60.0
-_BACKOFF_CAP_S:   float = 3600.0   # 1 hour ceiling
-# After this many consecutive failures, stop retrying and escalate.
+_BACKOFF_CAP_S:   float = 3_600.0
 _MAX_CONSECUTIVE_FAILURES: int = 8
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Logging → internal TUI buffer
+# Logging → TUI buffer
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _TUILogHandler(logging.Handler):
     """
-    Thread-safe log handler that appends formatted records to a shared deque.
+    Thread-safe log handler que escribe en un deque compartido.
 
-    FIX #6: Uses its OWN dedicated lock (_buf_lock) separate from the
-    EstadoBot state lock. The original implementation shared estado._lock
-    between emit() and snapshot(), creating a deadlock if any code path
-    emitted a log record while holding estado._lock.
-
-    The buffer deque is shared by reference with EstadoBot.log_buffer.
-    Reads from snapshot() use EstadoBot._lock; writes here use _buf_lock.
-    The two locks are intentionally disjoint to prevent lock-ordering deadlocks.
+    Usa su propio lock (_buf_lock) separado del lock de EstadoBot para
+    evitar deadlocks si algún codepath emite un log mientras sostiene
+    estado._lock.
     """
 
     def __init__(self, buffer: deque[str]) -> None:
         super().__init__()
         self._buf      = buffer
-        self._buf_lock = ThreadLock()   # dedicated lock — never shared
+        self._buf_lock = ThreadLock()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             line = self.format(record)
         except Exception:
             line = record.getMessage()
-        # Only the buffer lock is held here; EstadoBot._lock is never touched.
         with self._buf_lock:
             self._buf.append(line)
 
 
 def _configurar_logging(buffer: deque[str]) -> None:
-    """
-    Configures root logger to funnel into the TUI buffer.
-
-    FIX: Handler now owns its own lock. The estado._lock argument
-    is removed — callers no longer need to pass it.
-    """
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     for h in root.handlers[:]:
@@ -137,7 +122,7 @@ def _configurar_logging(buffer: deque[str]) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Shared state — sliding window + telemetry counters
+# Shared state
 # ─────────────────────────────────────────────────────────────────────────────
 
 ScrapingRow: TypeAlias = dict
@@ -147,7 +132,9 @@ _ESTADOS_ACTIVOS: frozenset[str] = frozenset({"Scrapeando", "Semilla"})
 @dataclass
 class EstadoBot:
     fase_actual: str      = "Iniciando…"
-    inicio:      datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    inicio:      datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     scraping_total:      int = 0
     scraping_procesados: int = 0
@@ -164,19 +151,18 @@ class EstadoBot:
     mail_errores:    int = 0
     mail_omitidas:   int = 0
 
-    # ── Telemetry counters exposed to generate_dashboard() ──────────────────
-    emails_ok:   int = 0    # confirmed SMTP sends
-    emails_fail: int = 0    # bounced / SMTP errors
-    wa_ok:       int = 0    # confirmed WhatsApp sends
-    wa_fail:     int = 0    # bounced + WA errors combined
-    target:      str = "—"  # human-readable label of what is being processed
-    wa_qr_data:  str = ""   # native QR code data for terminal rendering
+    emails_ok:   int = 0
+    emails_fail: int = 0
+    wa_ok:       int = 0
+    wa_fail:     int = 0
+    target:      str = "—"
+    wa_qr_data:  str = ""
 
-    log_buffer: deque = field(default_factory=lambda: deque(maxlen=MAX_LOG_LINES))
+    log_buffer: deque = field(
+        default_factory=lambda: deque(maxlen=MAX_LOG_LINES)
+    )
 
     _lock: ThreadLock = field(default_factory=ThreadLock)
-
-    # ── Sliding window helpers ───────────────────────────────────────────────
 
     def upsert_scraping_row(
         self, dominio: str, score: int, perfil_cv: str, estado: str
@@ -207,7 +193,7 @@ class EstadoBot:
                 self.scraping_terminados.appendleft(row)
 
     def reset_cycle_metrics(self) -> None:
-        """Resets all per-cycle counters on EstadoBot while preserving daemon-level state."""
+        """Resetea contadores por ciclo sin tocar estado del daemon."""
         with self._lock:
             self.scraping_total      = 0
             self.scraping_procesados = 0
@@ -236,14 +222,12 @@ class EstadoBot:
                 "mail_enviadas":       self.mail_enviadas,
                 "mail_errores":        self.mail_errores,
                 "mail_omitidas":       self.mail_omitidas,
-                # ── new telemetry ──
                 "emails_ok":           self.emails_ok,
                 "emails_fail":         self.emails_fail,
                 "wa_ok":               self.wa_ok,
                 "wa_fail":             self.wa_fail,
                 "target":              self.target,
                 "wa_qr_data":          self.wa_qr_data,
-                # ── log tape ──
                 "log_lines":           list(self.log_buffer),
             }
 
@@ -256,7 +240,6 @@ class EstadoBot:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UI Metrics adapter
-# Translates EstadoBot.snapshot() → the flat dict generate_dashboard() expects.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_ui_metrics(snap: dict) -> dict:
@@ -264,61 +247,60 @@ def _build_ui_metrics(snap: dict) -> dict:
     scored_ok  = sum(1 for r in terminados if r.get("estado") == "OK")
 
     return {
-        # ── [OSINT] ──────────────────────────────────────────────────────────
-        "seeds_found":    snap.get("scraping_total",      0),
-        "scraping_total": snap.get("scraping_total",      0),
-        "scraping_done":  snap.get("scraping_procesados", 0),
-        "scraping_active": len(snap.get("activos",        [])),
+        "seeds_found":     snap.get("scraping_total",      0),
+        "scraping_total":  snap.get("scraping_total",      0),
+        "scraping_done":   snap.get("scraping_procesados", 0),
+        "scraping_active": len(snap.get("activos",         [])),
         "scored_ok":       scored_ok,
-        # ── [EMAIL_ENGINE] ───────────────────────────────────────────────────
-        "mail_queued":    snap.get("mail_procesadas", 0),
-        "mail_sent":      snap.get("emails_ok",       0),
-        "mail_bounced":   "—",
-        "mail_skipped":   snap.get("mail_omitidas",   0),
-        "mail_errors":    snap.get("emails_fail",     0),
-        # ── [WA_ENGINE] ──────────────────────────────────────────────────────
-        "wa_queued":      "—",
-        "wa_sent":        snap.get("wa_ok",           0),
-        "wa_bounced":     snap.get("wa_fail",         0),
-        "wa_errors":      "—",
-        "wa_daily_cap":   30,
-        # ── current target label (used by future TUI panels) ─────────────────
-        "target":         snap.get("target",          "—"),
-        "wa_qr_data":     snap.get("wa_qr_data",      ""),
+        "mail_queued":     snap.get("mail_procesadas", 0),
+        "mail_sent":       snap.get("emails_ok",       0),
+        "mail_bounced":    "—",
+        "mail_skipped":    snap.get("mail_omitidas",   0),
+        "mail_errors":     snap.get("emails_fail",     0),
+        "wa_queued":       "—",
+        "wa_sent":         snap.get("wa_ok",           0),
+        "wa_bounced":      snap.get("wa_fail",         0),
+        "wa_errors":       "—",
+        "wa_daily_cap":    30,
+        "target":          snap.get("target",          "—"),
+        "wa_qr_data":      snap.get("wa_qr_data",      ""),
     }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helpers: domain normalization, DDGS with retry, DB stats
+# Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def cargar_rubros(ruta_archivo: str = "rubros.txt") -> list[str]:
     logger = logging.getLogger("jobbot.main")
-    ruta = Path(ruta_archivo)
-    
+    ruta   = Path(ruta_archivo)
+
     if not ruta.exists():
-        logger.critical("No se encontró el archivo %s. Crealo con tu lista de rubros.", ruta_archivo)
-        # Fallback de emergencia mínimo para que no crashee en la cara
+        logger.critical(
+            "No se encontró el archivo %s. Crealo con tu lista de rubros.",
+            ruta_archivo,
+        )
         return ["software house", "soporte técnico pc"]
-        
+
     with open(ruta, "r", encoding="utf-8") as f:
         rubros = [
-            line.strip() 
-            for line in f 
+            line.strip()
+            for line in f
             if line.strip() and not line.startswith("#")
         ]
-        
+
     logger.info("Se cargaron %d rubros desde %s", len(rubros), ruta_archivo)
     return rubros
 
+
 def _construir_query_dork(rubro: str, zona: str = "") -> str:
-    """Builds a DuckDuckGo OSINT query string with no double-space artifacts."""
     parts: list[str] = ["site:.ar"]
     if zona.strip():
         parts.append(f'"{zona.strip()}"')
     parts.append(f'"{rubro}"')
     parts.append('(contacto OR rrhh OR empleos OR "trabaja con nosotros" OR cv)')
     return " ".join(parts)
+
 
 def _extraer_dominio_limpio(url: str) -> Optional[str]:
     try:
@@ -357,7 +339,7 @@ async def _ddgs_con_retry(
         try:
             return await asyncio.to_thread(_ddgs_text_sync, query, max_results)
         except ImportError:
-            raise   # package not installed — retrying is pointless
+            raise
         except Exception as exc:
             es_ratelimit = (
                 "ratelimit" in type(exc).__name__.lower()
@@ -428,7 +410,6 @@ async def recolectar_urls_semilla(
         if estado:
             estado.fase_actual = f"Dorking [{idx}/{len(rubros)}]: {rubro}…"
             with estado._lock:
-                # ── metrics: broadcast current OSINT target to the TUI ───────
                 estado.target = rubro
 
         resultados = await _ddgs_con_retry(query, limite)
@@ -447,20 +428,22 @@ async def recolectar_urls_semilla(
             try:
                 await asyncio.to_thread(
                     upsert_empresa,
-                    nombre=titulo, dominio=dominio, rubro=rubro, score=0, es_seed=True,
+                    nombre=titulo, dominio=dominio,
+                    rubro=rubro, score=0, es_seed=True,
                 )
                 insertados += 1
                 logger_fn.info("Semilla | %s | %s", dominio, rubro)
                 if estado:
                     estado.upsert_scraping_row(dominio, 0, "–", "Semilla")
                     with estado._lock:
-                        # ── metrics: each new seed increments the total ───────
                         estado.scraping_total += 1
             except Exception as exc:
-                logger_fn.error("Fallo semilla | %s | %s", dominio, str(exc)[:80])
+                logger_fn.error(
+                    "Fallo semilla | %s | %s", dominio, str(exc)[:80]
+                )
 
         pausa = random.uniform(3.5, 7.5)
-        logger_fn.debug("Anti-ban: pausa %.1fs antes del próximo rubro", pausa)
+        logger_fn.debug("Anti-ban: pausa %.1fs", pausa)
         await asyncio.sleep(pausa)
 
     logger_fn.info("Dorking finalizado | semillas=%d", insertados)
@@ -471,21 +454,19 @@ async def pipeline_dork(args: argparse.Namespace, estado: EstadoBot) -> None:
     estado.fase_actual = "Iniciando DuckDuckGo Dorking…"
     logger_fn = logging.getLogger("jobbot.dork")
 
-    # 1. Cargamos la lista gigante que creamos
-    ruta = getattr(args, "rubros_file", None) or "rubros.txt"
+    ruta      = getattr(args, "rubros_file", None) or "rubros.txt"
     mis_rubros = cargar_rubros(ruta)
 
-    # 2. Se la pasamos a la función de recolección en tu pipeline_dork
     n = await recolectar_urls_semilla(
-        rubros=mis_rubros, 
-        zona="",  # Nacional
-        limite=args.limite_dork, 
+        rubros=mis_rubros,
+        zona="",
+        limite=args.limite_dork,
         estado=estado,
     )
 
     estado.fase_actual = f"Dorking completo — {n} dominios semilla en DB"
     with estado._lock:
-        estado.target = "—"   # ── metrics: clear target on completion
+        estado.target = "—"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -493,10 +474,6 @@ async def pipeline_dork(args: argparse.Namespace, estado: EstadoBot) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _make_progress_hook(estado: EstadoBot, logger_fn: logging.Logger):
-    """
-    Retorna un callable compatible con la firma on_progress de procesar_lote.
-    Mantiene el acoplamiento cero entre scraper.py y EstadoBot.
-    """
     def _hook(dominio: str, resultado) -> None:
         if resultado is not None:
             estado.upsert_scraping_row(
@@ -518,11 +495,12 @@ def _make_progress_hook(estado: EstadoBot, logger_fn: logging.Logger):
 
 
 async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
-    from scraper import procesar_lote   # lazy: playwright solo se necesita aquí
+    from scraper import procesar_lote
     logger_fn = logging.getLogger("jobbot.main")
     estado.fase_actual = "Cargando dominios desde DB…"
 
-    empresas = await asyncio.to_thread(get_empresas_ordenadas_por_score, 0, 1000)
+    # FIX v2.4: límite elevado de 1 000 a 5 000 dominios.
+    empresas = await asyncio.to_thread(get_empresas_ordenadas_por_score, 0, 5_000)
     dominios: list[str] = [str(e["dominio"]) for e in empresas]
 
     if not dominios:
@@ -546,10 +524,14 @@ async def pipeline_scrape(args: argparse.Namespace, estado: EstadoBot) -> None:
     with estado._lock:
         estado.scraping_procesados = len(resultados)
         exitosos = sum(1 for v in resultados.values() if v is not None)
-        estado.target = "—"   # ── metrics: clear target on completion
-        
-    estado.fase_actual = f"Scraping completo — {exitosos} / {len(dominios)} exitosos"
-    logger_fn.info("Lote finalizado | total=%d | exitosos=%d", len(dominios), exitosos)
+        estado.target = "—"
+
+    estado.fase_actual = (
+        f"Scraping completo — {exitosos} / {len(dominios)} exitosos"
+    )
+    logger_fn.info(
+        "Lote finalizado | total=%d | exitosos=%d", len(dominios), exitosos
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -560,7 +542,9 @@ async def pipeline_mail(args: argparse.Namespace, estado: EstadoBot) -> None:
     logger_fn = logging.getLogger("jobbot.main")
     dry_run   = getattr(args, "dry_run",   False)
     min_score = getattr(args, "min_score", 55)
-    estado.fase_actual = "[DRY-RUN] Campaña email…" if dry_run else "Campaña email en progreso…"
+    estado.fase_actual = (
+        "[DRY-RUN] Campaña email…" if dry_run else "Campaña email en progreso…"
+    )
 
     mail_task: asyncio.Task = asyncio.create_task(
         procesar_envios_pendientes(
@@ -568,16 +552,14 @@ async def pipeline_mail(args: argparse.Namespace, estado: EstadoBot) -> None:
         )
     )
 
-    # Poll the DB every MAIL_POLL_INTERVAL_S for live counter updates
     while not mail_task.done():
         stats = await asyncio.to_thread(_query_mail_stats_db)
         with estado._lock:
             estado.mail_procesadas = stats["total"]
             estado.mail_enviadas   = stats["enviadas"]
             estado.mail_errores    = stats["errores"]
-            # ── metrics: sync fine-grained counters for the TE telemetry panel
-            estado.emails_ok   = stats["enviadas"]
-            estado.emails_fail = stats["errores"]
+            estado.emails_ok       = stats["enviadas"]
+            estado.emails_fail     = stats["errores"]
         await asyncio.sleep(MAIL_POLL_INTERVAL_S)
 
     try:
@@ -591,10 +573,9 @@ async def pipeline_mail(args: argparse.Namespace, estado: EstadoBot) -> None:
         estado.mail_enviadas   = metricas.get("enviadas",   0)
         estado.mail_errores    = metricas.get("errores",    0)
         estado.mail_omitidas   = metricas.get("omitidas",   0)
-        # ── metrics: overwrite with authoritative final counts from the engine
-        estado.emails_ok   = metricas.get("enviadas", 0)
-        estado.emails_fail = metricas.get("errores",  0)
-        estado.target      = "—"   # ── metrics: clear target on completion
+        estado.emails_ok       = metricas.get("enviadas",   0)
+        estado.emails_fail     = metricas.get("errores",    0)
+        estado.target          = "—"
 
     estado.fase_actual = (
         f"Campaña finalizada — "
@@ -610,10 +591,9 @@ async def pipeline_mail(args: argparse.Namespace, estado: EstadoBot) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def pipeline_wa(args: argparse.Namespace, estado: EstadoBot) -> None:
-    from wa_sender import procesar_envios_wa   # lazy: playwright only needed here
+    from wa_sender import procesar_envios_wa
     estado.fase_actual = "Campaña WhatsApp en progreso…"
     with estado._lock:
-        # ── metrics: label the LCD panel while WA Web authenticates ──────────
         estado.target = "WA Web — esperando sesión…"
 
     metricas = await procesar_envios_wa(
@@ -624,12 +604,11 @@ async def pipeline_wa(args: argparse.Namespace, estado: EstadoBot) -> None:
     )
 
     with estado._lock:
-        # ── metrics: persist final WA counters into EstadoBot ─────────────────
         estado.wa_ok   = metricas.get("enviados",  0)
         estado.wa_fail = (
             metricas.get("rebotados", 0) + metricas.get("errores", 0)
         )
-        estado.target  = "—"   # ── metrics: clear target on completion
+        estado.target  = "—"
 
     estado.fase_actual = (
         f"Campaña WA finalizada — "
@@ -639,10 +618,21 @@ async def pipeline_wa(args: argparse.Namespace, estado: EstadoBot) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pipeline: Auto (sequential full run)
+# Pipeline: Auto (daemon loop)
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
+    """
+    Daemon de ciclos completos (dork → scrape → mail) con backoff exponencial
+    en fallos y pausa anti-ban entre ciclos exitosos.
+
+    FIX v2.4 — Reestructuración del bucle:
+      El flag `ciclo_ok` reemplaza la construcción try/except/else que resultaba
+      ambigua (el `else` de un try/except puede pasar inadvertido como path
+      de éxito). Ahora los dos paths —éxito y error— son ramas if/else explícitas
+      que se leen linealmente, y el `ciclo += 1` ocurre exactamente una vez al
+      final del loop, eliminando el `continue` que podía saltearlo.
+    """
     logger_fn = logging.getLogger("jobbot.main")
     logger_fn.info("=== Pipeline AUTO (DAEMON MODE) iniciado ===")
 
@@ -655,12 +645,14 @@ async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
         with estado._lock:
             estado.target = f"Ciclo {ciclo}"
 
+        ciclo_ok = False
+
         try:
             async with asyncio.timeout(_CYCLE_TIMEOUT_S):
                 await pipeline_dork(args, estado)
                 await pipeline_scrape(args, estado)
                 await pipeline_mail(args, estado)
-
+            ciclo_ok             = True
             consecutive_failures = 0
             logger_fn.info("Ciclo %d completado exitosamente.", ciclo)
 
@@ -675,12 +667,11 @@ async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
         except TimeoutError:
             consecutive_failures += 1
             logger_fn.error(
-                "Ciclo %d excedió el timeout de %.0f segundos (fallo #%d).",
-                ciclo, _CYCLE_TIMEOUT_S, consecutive_failures,
+                "Ciclo %d excedió el timeout de %.0f horas (fallo #%d).",
+                ciclo, _CYCLE_TIMEOUT_S / 3_600, consecutive_failures,
             )
             estado.fase_actual = (
-                f"Ciclo #{ciclo} → TIMEOUT. "
-                f"Backoff #{consecutive_failures}…"
+                f"Ciclo #{ciclo} → TIMEOUT. Backoff #{consecutive_failures}…"
             )
 
         except Exception as exc:
@@ -695,51 +686,59 @@ async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
                 f"Backoff #{consecutive_failures}…"
             )
 
-        else:
-            pausa_s = random.uniform(1_500, 2_700)  # 25–45 minutes
-            estado.fase_actual = (
-                f"Ciclo #{ciclo} completo. "
-                f"Durmiendo {pausa_s / 60:.1f} min…"
-            )
-            logger_fn.info(
-                "Ciclo %d completado. Pausa anti-ban de %.1f minutos.",
-                ciclo, pausa_s / 60,
-            )
-            try:
-                await asyncio.sleep(pausa_s)
-            except asyncio.CancelledError:
-                logger_fn.info("Interrumpido durante el sleep. Apagando daemon…")
-                raise
-            ciclo += 1
-            continue
-
+        # ── Verificar umbral de fallos antes de dormir ────────────────────────
         if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
             msg = (
                 f"Daemon abortado: {consecutive_failures} fallos consecutivos "
-                f"sin recuperación. Revisá los logs y reiniciá manualmente."
+                "sin recuperación. Revisá los logs y reiniciá manualmente."
             )
             logger_fn.critical(msg)
             estado.fase_actual = f"⛔ DAEMON ABORTADO — {consecutive_failures} fallos"
             raise RuntimeError(msg)
 
-        deterministic = _BACKOFF_BASE_S * (2 ** (consecutive_failures - 1))
-        jitter        = random.uniform(0, _BACKOFF_BASE_S)
-        backoff_s     = min(deterministic + jitter, _BACKOFF_CAP_S)
+        # ── Path exitoso: pausa anti-ban larga (25-45 min) ───────────────────
+        if ciclo_ok:
+            pausa_s = random.uniform(1_500, 2_700)
+            estado.fase_actual = (
+                f"Ciclo #{ciclo} completo. "
+                f"Durmiendo {pausa_s / 60:.1f} min…"
+            )
+            logger_fn.info(
+                "Ciclo %d completo. Pausa anti-ban de %.1f minutos.",
+                ciclo, pausa_s / 60,
+            )
+            try:
+                await asyncio.sleep(pausa_s)
+            except asyncio.CancelledError:
+                logger_fn.info(
+                    "Interrumpido durante la pausa. Apagando daemon…"
+                )
+                raise
 
-        logger_fn.warning(
-            "Backoff #%d: durmiendo %.0f segundos antes de reintentar ciclo %d.",
-            consecutive_failures, backoff_s, ciclo,
-        )
-        estado.fase_actual = (
-            f"Backoff #{consecutive_failures}: "
-            f"{backoff_s:.0f}s antes de reintentar…"
-        )
-        try:
-            await asyncio.sleep(backoff_s)
-        except asyncio.CancelledError:
-            logger_fn.info("Interrumpido durante backoff. Apagando daemon…")
-            raise
+        # ── Path con error: backoff exponencial ──────────────────────────────
+        else:
+            deterministic = _BACKOFF_BASE_S * (2 ** (consecutive_failures - 1))
+            jitter        = random.uniform(0, _BACKOFF_BASE_S)
+            backoff_s     = min(deterministic + jitter, _BACKOFF_CAP_S)
 
+            logger_fn.warning(
+                "Backoff #%d: durmiendo %.0f segundos antes de reintentar "
+                "ciclo %d.",
+                consecutive_failures, backoff_s, ciclo + 1,
+            )
+            estado.fase_actual = (
+                f"Backoff #{consecutive_failures}: "
+                f"{backoff_s:.0f}s antes de reintentar…"
+            )
+            try:
+                await asyncio.sleep(backoff_s)
+            except asyncio.CancelledError:
+                logger_fn.info(
+                    "Interrumpido durante backoff. Apagando daemon…"
+                )
+                raise
+
+        # ── Incremento de ciclo: ocurre exactamente una vez por iteración ─────
         ciclo += 1
 
 
@@ -750,7 +749,7 @@ async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python main.py",
-        description="JobBot v2.3 — OSINT, scraping y cold email para MdP.",
+        description="JobBot v2.4 — OSINT, scraping y cold email para MdP.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Ejemplos:\n"
@@ -767,15 +766,22 @@ def _build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--auto",   action="store_true")
     mode.add_argument("--wa",     action="store_true")
 
-    parser.add_argument("--rubros",            nargs="+", default=RUBROS_DEFAULT, metavar="RUBRO")
-    parser.add_argument("--rubros-file",       type=str,  default=None, dest="rubros_file", metavar="FILE")
-    parser.add_argument("--limite-dork",       type=int,  default=30,   dest="limite_dork")
-    parser.add_argument("--concurrencia",      type=int,  default=3)
-    parser.add_argument("--min-score",         type=int,  default=55,   dest="min_score")
-    parser.add_argument("--dry-run",           action="store_true",     dest="dry_run")
-    parser.add_argument("--limite",            type=int,  default=10)
-    parser.add_argument("--headless",          action="store_true")
-    parser.add_argument("--forzar-rescraping", action="store_true",     dest="forzar_rescraping")
+    parser.add_argument(
+        "--rubros", nargs="+", default=RUBROS_DEFAULT, metavar="RUBRO"
+    )
+    parser.add_argument(
+        "--rubros-file", type=str, default=None,
+        dest="rubros_file", metavar="FILE",
+    )
+    parser.add_argument("--limite-dork",  type=int, default=30, dest="limite_dork")
+    parser.add_argument("--concurrencia", type=int, default=3)
+    parser.add_argument("--min-score",    type=int, default=55, dest="min_score")
+    parser.add_argument("--dry-run",      action="store_true",  dest="dry_run")
+    parser.add_argument("--limite",       type=int, default=10)
+    parser.add_argument("--headless",     action="store_true")
+    parser.add_argument(
+        "--forzar-rescraping", action="store_true", dest="forzar_rescraping"
+    )
     return parser
 
 
@@ -804,16 +810,16 @@ async def _async_main(args: argparse.Namespace) -> None:
         pass
 
     logger_fn = logging.getLogger("jobbot.main")
-    modo = next(m for m in ("dork", "scrape", "mail", "wa", "auto") if getattr(args, m))
+    modo = next(
+        m for m in ("dork", "scrape", "mail", "wa", "auto")
+        if getattr(args, m)
+    )
     logger_fn.info(
-        "JobBot v2.3 | modo=%s | dry_run=%s", modo, getattr(args, "dry_run", False)
+        "JobBot v2.4 | modo=%s | dry_run=%s", modo, getattr(args, "dry_run", False)
     )
 
-    # tick drives the mascot's 2-frame blink animation in jobbot_tui
     tick       = 0
     stop_event = asyncio.Event()
-
-    # ── Refresh coroutine — owns the Live handle, touches nothing else ───────
 
     async def _refresh_loop(live: Live) -> None:
         nonlocal tick
@@ -822,31 +828,28 @@ async def _async_main(args: argparse.Namespace) -> None:
             try:
                 live.update(
                     generate_dashboard(
-                        state   = bot_state_from_phase(snap["fase_actual"]),
-                        metrics = _build_ui_metrics(snap),
-                        logs    = snap["log_lines"],
-                        elapsed = snap["elapsed"],
-                        # Truncate to keep the header strip clean
-                        phase   = snap["fase_actual"].upper()[:48],
-                        tick    = tick,
+                        state      = bot_state_from_phase(snap["fase_actual"]),
+                        metrics    = _build_ui_metrics(snap),
+                        logs       = snap["log_lines"],
+                        elapsed    = snap["elapsed"],
+                        phase      = snap["fase_actual"].upper()[:48],
+                        tick       = tick,
                         wa_qr_data = snap["wa_qr_data"],
                     ),
                     refresh=True,
                 )
             except Exception:
-                pass   # never let a render crash kill the backend
+                pass
             tick += 1
             await asyncio.sleep(DASHBOARD_REFRESH_S)
 
-    # ── Bootstrap render — shown immediately before the first pipeline tick ──
-
     initial_layout = generate_dashboard(
-        state   = BotState.IDLE,
-        metrics = {},
-        logs    = [],
-        elapsed = "00:00:00",
-        phase   = "INICIANDO…",
-        tick    = 0,
+        state      = BotState.IDLE,
+        metrics    = {},
+        logs       = [],
+        elapsed    = "00:00:00",
+        phase      = "INICIANDO…",
+        tick       = 0,
         wa_qr_data = "",
     )
 
@@ -865,7 +868,6 @@ async def _async_main(args: argparse.Namespace) -> None:
             elif args.wa:     await pipeline_wa(args, estado)
             elif args.auto:   await pipeline_auto(args, estado)
         finally:
-            # Stop the refresh loop cleanly before Live closes its context
             stop_event.set()
             refresh_task.cancel()
             try:
@@ -873,17 +875,16 @@ async def _async_main(args: argparse.Namespace) -> None:
             except asyncio.CancelledError:
                 pass
 
-            # ── Final static render — freeze dashboard at its terminal state ─
             snap = estado.snapshot()
             try:
                 live.update(
                     generate_dashboard(
-                        state   = bot_state_from_phase(snap["fase_actual"]),
-                        metrics = _build_ui_metrics(snap),
-                        logs    = snap["log_lines"],
-                        elapsed = snap["elapsed"],
-                        phase   = snap["fase_actual"].upper()[:48],
-                        tick    = tick,
+                        state      = bot_state_from_phase(snap["fase_actual"]),
+                        metrics    = _build_ui_metrics(snap),
+                        logs       = snap["log_lines"],
+                        elapsed    = snap["elapsed"],
+                        phase      = snap["fase_actual"].upper()[:48],
+                        tick       = tick,
                         wa_qr_data = snap["wa_qr_data"],
                     )
                 )
@@ -908,7 +909,9 @@ def main() -> None:
     try:
         asyncio.run(_async_main(args))
     except KeyboardInterrupt:
-        err.print("\n[bold yellow]Interrumpido por el usuario. DB consistente.[/bold yellow]")
+        err.print(
+            "\n[bold yellow]Interrumpido por el usuario. DB consistente.[/bold yellow]"
+        )
     except EnvironmentError as exc:
         err.print(f"\n[bold red]Error de configuración:[/bold red] {exc}")
         raise SystemExit(1)

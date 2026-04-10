@@ -34,7 +34,7 @@ from db_manager import (
     get_empresa_by_dominio,
     get_connection,
 )
-from utils.browser import apply_stealth   # REFACTOR: centralizado
+from utils.browser import apply_stealth
 
 logger = logging.getLogger("jobbot.scraper")
 
@@ -53,7 +53,7 @@ CHROMIUM_ARGS = [
     "--no-sandbox",
     "--disable-dev-shm-usage",
     "--disable-features=IsolateOrigins,site-per-process",
-    "--lang=es-AR,es;q=0.9",  # Crucial: IDioma local
+    "--lang=es-AR,es;q=0.9",
 ]
 
 PRIORITY_PATHS: tuple[str, ...] = (
@@ -198,7 +198,7 @@ async def _crear_contexto_stealth(browser: Browser) -> BrowserContext:
         },
     )
 
-    await apply_stealth(context)   # REFACTOR: centralizado en utils.browser
+    await apply_stealth(context)
 
     logger.debug(
         "Contexto stealth creado | ua=...%s", ua[-30:]
@@ -236,17 +236,14 @@ async def _navegar_y_extraer(
             logger.warning("HTTP %d recibido, saltando | url=%s", response.status, url)
             return "", []
 
-        # Simulación de lectura humana antes de extraer el HTML
         try:
-            # Mueve el mouse a un punto aleatorio de la pantalla superior
             await page.mouse.move(random.randint(100, 800), random.randint(100, 400))
             await asyncio.sleep(random.uniform(0.3, 0.8))
             
-            # Scrollea un tercio de la pantalla (rompe la métrica de 'scroll 0' de Datadome)
             await page.evaluate("window.scrollBy(0, window.innerHeight / 1.5)")
             await asyncio.sleep(random.uniform(0.5, 1.5))
         except Exception:
-            pass # Si el mouse o el scroll fallan, ignoramos y seguimos
+            pass
 
         await asyncio.sleep(random.uniform(BETWEEN_PAGES_MIN, BETWEEN_PAGES_MAX))
         html = await page.content()
@@ -466,14 +463,12 @@ async def procesar_lote(
                         browser=browser,
                         forzar_rescraping=forzar_rescraping,
                     )
-                    # FIX #1: indentation corrected — same block as resultados write
                     resultados[dominio] = resultado
                     if on_progress is not None:
                         on_progress(dominio, resultado)
 
             tasks = [asyncio.create_task(_tarea(d)) for d in dominios]
 
-            # FIX #2: inspect gather results — do not silently swallow exceptions
             raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
             task_failures = 0
@@ -495,7 +490,6 @@ async def procesar_lote(
                 )
 
         finally:
-            # FIX #3: browser closed in finally — survives any exception above
             await browser.close()
             logger.info("Browser Chromium cerrado.")
 

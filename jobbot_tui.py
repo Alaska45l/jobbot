@@ -4,16 +4,17 @@ Teenage Engineering / Dieter Rams aesthetic: Minimalist Retro-Futurism.
 "Less, but better."
 
 Python: 3.11+
-Dependencias: rich
+Dependencias: rich, qrcode, shutil (stdlib)
 """
 from __future__ import annotations
 
-import io
-import qrcode
-from functools import lru_cache
+import shutil
 import time
 from enum import Enum, auto
+from functools import lru_cache
 from typing import Optional
+
+import qrcode
 
 from rich import box
 from rich.console import Console
@@ -30,19 +31,16 @@ from rich.text import Text
 
 class P:
     """Teenage Engineering × Dieter Rams color tokens."""
-    # Neutrals (raw aluminium)
-    CHROME   = "#D4D4D8"   # foreground / body text
-    MATTE    = "#A1A1AA"   # secondary / dim text
-    CHASSIS  = "#3F3F46"   # borders, idle elements, sleep eyes
-    VOID     = "#18181B"   # deep background reference
+    CHROME   = "#D4D4D8"
+    MATTE    = "#A1A1AA"
+    CHASSIS  = "#3F3F46"
+    VOID     = "#18181B"
 
-    # Accent primaries — one at a time, never mixed
-    ORANGE   = "#FF6B35"   # active / alert / dorking  (TE Signal Orange)
-    YELLOW   = "#FFCC00"   # warning / rate-limit       (TE Studio Yellow)
-    BLUE     = "#007AFF"   # success / happy            (TE Sys Blue)
-    RED      = "#FF3B30"   # error / rebotado           (TE Alarm Red)
+    ORANGE   = "#FF6B35"
+    YELLOW   = "#FFCC00"
+    BLUE     = "#007AFF"
+    RED      = "#FF3B30"
 
-    # Pre-built Rich Style shortcuts
     s_chrome  = Style(color=CHROME)
     s_matte   = Style(color=MATTE)
     s_chassis = Style(color=CHASSIS)
@@ -58,35 +56,28 @@ class P:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class BotState(Enum):
-    IDLE      = auto()   # waiting / rate-limit jitter
-    DORKING   = auto()   # DuckDuckGo OSINT phase
-    SCRAPING  = auto()   # Playwright stealth phase
-    MAILING   = auto()   # SMTP dispatch
-    WA        = auto()   # WhatsApp Web phase
-    SUCCESS   = auto()   # confirmed send / high-score find
+    IDLE      = auto()
+    DORKING   = auto()
+    SCRAPING  = auto()
+    MAILING   = auto()
+    WA        = auto()
+    SUCCESS   = auto()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# JOB MASCOT — 8-bit LCD pet on a hardware screen
+# JOB MASCOT — 8-bit LCD pet
 # ─────────────────────────────────────────────────────────────────────────────
 
 class JobMascot:
-    """
-    Pixel-art mascot rendered as a Rich Text object.
-    Strict 36x13 character grid to prevent any layout shifting.
-    Based on Teenage Engineering / Dieter Rams solid hardware aesthetics.
-    """
 
-    # TE palette wired to mascot regions
-    CAT_BODY  = P.s_chrome    # aluminium hull
-    EYE_SLEEP = P.s_chassis   # matte dark grey  — IDLE
-    EYE_ALERT = P.s_orange    # signal orange    — DORKING / SCRAPING
-    EYE_HAPPY = P.s_blue      # sys blue         — SUCCESS
-    EYE_WARN  = P.s_yellow    # studio yellow    — MAILING / WA
-    EYE_ERR   = P.s_red       # alarm red        — error state
+    CAT_BODY  = P.s_chrome
+    EYE_SLEEP = P.s_chassis
+    EYE_ALERT = P.s_orange
+    EYE_HAPPY = P.s_blue
+    EYE_WARN  = P.s_yellow
+    EYE_ERR   = P.s_red
 
     def _draw_sleep(self) -> Text:
-        """IDLE state — sleeping, eyes as flat lines."""
         return Text.assemble(
             ("              ████          ████    \n", self.CAT_BODY),
             ("              ██  ██      ██  ██    \n", self.CAT_BODY),
@@ -98,14 +89,13 @@ class JobMascot:
             ("    ██  ██  ██                  ██  \n", self.CAT_BODY),
             ("    ██    ██  ██              ██    \n", self.CAT_BODY),
             ("      ██    ██████          ██      \n", self.CAT_BODY),
-            ("        ██             ██   ██      \n", self.CAT_BODY),
+            ("        ██                  ██      \n", self.CAT_BODY),
             ("        ██████████████████████      \n", self.CAT_BODY),
             ("                                    \n", self.CAT_BODY),
             ("                                    ", self.CAT_BODY),
         )
 
     def _draw_alert(self) -> Text:
-        """DORKING / SCRAPING — eyes wide open, signal orange."""
         return Text.assemble(
             ("              ████          ████    \n", self.CAT_BODY),
             ("              ██  ██      ██  ██    \n", self.CAT_BODY),
@@ -124,7 +114,6 @@ class JobMascot:
         )
 
     def _draw_warn(self) -> Text:
-        """MAILING / WA — studio yellow eyes, squinting/scanning."""
         return Text.assemble(
             ("              ████          ████    \n", self.CAT_BODY),
             ("              ██  ██      ██  ██    \n", self.CAT_BODY),
@@ -143,7 +132,6 @@ class JobMascot:
         )
 
     def _draw_happy(self) -> Text:
-        """SUCCESS — sys blue eyes, happy expression."""
         return Text.assemble(
             ("              ████          ████    \n", self.CAT_BODY),
             ("              ██  ██      ██  ██    \n", self.CAT_BODY),
@@ -161,10 +149,7 @@ class JobMascot:
             ("                                      ", self.CAT_BODY),
         )
 
-    # ── Blinking animation helper (2-frame cycle on ALERT) ──────────────────
-
     def _draw_alert_blink(self) -> Text:
-        """Alternate frame for DORKING — flat blink effect."""
         return Text.assemble(
             ("              ████          ████    \n", self.CAT_BODY),
             ("              ██  ██      ██  ██    \n", self.CAT_BODY),
@@ -182,18 +167,11 @@ class JobMascot:
             ("                                      ", self.CAT_BODY),
         )
 
-    # ── Public API ───────────────────────────────────────────────────────────
-
     def get_frame(self, state: BotState, tick: int = 0) -> Text:
-        """
-        Returns the correct animation frame for the current bot state.
-        tick is an integer that increments each refresh — drives blink cycles.
-        """
         match state:
             case BotState.IDLE:
                 return self._draw_sleep()
             case BotState.DORKING | BotState.SCRAPING:
-                # 2-frame blink: 14 normal, 1 blink, repeat
                 return self._draw_alert_blink() if (tick % 15 == 14) else self._draw_alert()
             case BotState.MAILING | BotState.WA:
                 return self._draw_warn()
@@ -203,7 +181,6 @@ class JobMascot:
                 return self._draw_sleep()
 
     def get_status_line(self, state: BotState) -> Text:
-        """One-liner status tag shown beneath the mascot panel."""
         labels = {
             BotState.IDLE:     ("■ STANDBY",      P.s_chassis),
             BotState.DORKING:  ("▶ OSINT / DORK", P.s_orange),
@@ -219,17 +196,13 @@ class JobMascot:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DASHBOARD — generate_dashboard()
+# DASHBOARD
 # ─────────────────────────────────────────────────────────────────────────────
 
 _mascot = JobMascot()
 
 
 def _header(elapsed: str, phase: str) -> Panel:
-    """
-    Top strip — hardware label + phase + clock.
-    SQUARE box = industrial corners, zero decoration.
-    """
     row = Text(justify="left")
     row.append("  JOB-BOT // ORCHESTRATOR", style=Style(color=P.CHROME, bold=True))
     row.append("  ·  ", style=P.s_chassis)
@@ -237,7 +210,6 @@ def _header(elapsed: str, phase: str) -> Panel:
 
     clock = Text(f"  ⏱  {elapsed}  ", style=P.s_matte, justify="right")
 
-    # Combine into a single-row table so elapsed floats right
     tbl = Table.grid(expand=True)
     tbl.add_column(ratio=3)
     tbl.add_column(ratio=1)
@@ -247,14 +219,9 @@ def _header(elapsed: str, phase: str) -> Panel:
 
 
 def _mascot_panel(state: BotState, tick: int) -> Panel:
-    """
-    Left column — the "LCD screen" housing the mascot.
-    Fixed width feels like a physical display cutout.
-    """
     art    = _mascot.get_frame(state, tick)
     status = _mascot.get_status_line(state)
-
-    body = Text.assemble(art, "\n", status)
+    body   = Text.assemble(art, "\n", status)
 
     return Panel(
         body,
@@ -265,58 +232,63 @@ def _mascot_panel(state: BotState, tick: int) -> Panel:
         padding=(1, 1),
     )
 
+_STYLE_DARK  = "#000000 on #000000" 
+_STYLE_LIGHT = "#ffffff on #ffffff" 
+_STYLE_TOP   = "#000000 on #ffffff" 
+_STYLE_BOT   = "#000000 on #ffffff" 
+
 
 @lru_cache(maxsize=1)
 def _qr_panel(qr_data: str) -> Panel:
     """
-    Renderiza el QR de WhatsApp Web en terminal.
-
-    Historial de cambios:
-      v1 (original): version=1, border=1 → DataOverflowError en payloads
-                     largos de WA Auth; quiet zone insuficiente.
-      v2 (parche 1): version=None, border=2 → auto-sizing correcto.
-                     no_wrap=True + overflow="crop" → aún truncaba si
-                     minimum_size del Layout era menor que el ancho del QR.
-      v3 (este):     Elimina no_wrap/overflow del Text. El Panel usa
-                     expand=False para no estirar el QR, y el Layout
-                     garantiza minimum_size=88 para contenerlo.
-                     Estilo aplicado al Text completo (O(1), no por carácter).
+    Renderiza el QR forzando el Modo Compacto (Half-Blocks) y nivel L
+    para garantizar que entre verticalmente en pantallas de notebooks.
+    Conserva los colores absolutos para ser inmune a los temas.
     """
     qr = qrcode.QRCode(
-        version=None,                               # auto-size según payload
+        version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
         box_size=1,
-        border=2,                                   # quiet zone: 2 módulos c/lado
+        border=1, 
     )
     qr.add_data(qr_data)
     qr.make(fit=True)
     matrix = qr.modules
 
-    lines: list[str] = []
-    for r in range(0, len(matrix), 2):
-        row_str = ""
-        for c in range(len(matrix[0])):
-            top = matrix[r][c]
-            bot = matrix[r + 1][c] if r + 1 < len(matrix) else False
-            if not top and not bot: row_str += "█"
-            elif not top and bot:   row_str += "▀"
-            elif top and not bot:   row_str += "▄"
-            else:                   row_str += " "
-        lines.append(row_str)
+    matrix_height = len(matrix)
+    matrix_width = len(matrix[0]) if matrix_height > 0 else 0
 
-    qr_content = Text(
-        "\n".join(lines),
-        style="white on black",
-        justify="center",
-    )
+    texto_qr = Text(justify="center")
+
+    for r in range(0, matrix_height, 2):
+        for c in range(matrix_width):
+            top = matrix[r][c]
+            bot = matrix[r + 1][c] if r + 1 < matrix_height else False
+
+            if top and bot:
+                # Arriba negro, abajo negro
+                texto_qr.append("█", style="#000000 on #000000")
+            elif not top and not bot:
+                # Arriba blanco, abajo blanco
+                texto_qr.append("█", style="#FFFFFF on #FFFFFF")
+            elif top and not bot:
+                # Arriba negro, abajo blanco
+                texto_qr.append("▀", style="#000000 on #FFFFFF")
+            else: 
+                # Arriba blanco, abajo negro
+                texto_qr.append("▄", style="#000000 on #FFFFFF")
+        texto_qr.append("\n")
+
+    if texto_qr.plain.endswith("\n"):
+        texto_qr.right_crop(1)
 
     return Panel(
-        qr_content,
+        texto_qr,
         title="[bold yellow] 🔐 AUTH REQUERIDA [/]",
         subtitle="[dim]ESCANEA CON WHATSAPP[/]",
         border_style="bright_blue",
         box=box.DOUBLE_EDGE,
-        padding=(1, 2),
+        padding=(0, 2),
         expand=False,
     )
 
@@ -329,11 +301,6 @@ def _metric(label: str, value: str | int, style: Style = P.s_chrome) -> tuple:
 
 
 def _telemetry_panel(metrics: dict) -> Panel:
-    """
-    Right column — three metric groups in a single Table.
-    Groups: [OSINT]  [EMAIL_ENGINE]  [WA_ENGINE]
-    No headers repeated — section labels act as dividers.
-    """
     tbl = Table(
         box=None,
         show_header=False,
@@ -356,34 +323,35 @@ def _telemetry_panel(metrics: dict) -> Panel:
     def blank() -> None:
         tbl.add_row(Text(""), Text(""))
 
-    # ── [OSINT] ─────────────────────────────────────────────────────────────
     section("[ OSINT ]")
-    row("SEEDS FOUND",   metrics.get("seeds_found",   "—"))
+    row("SEEDS FOUND",   metrics.get("seeds_found",    "—"))
     row("DOMAINS TOTAL", metrics.get("scraping_total", "—"))
     row("PROCESSED",     metrics.get("scraping_done",  "—"))
     row("ACTIVE",        metrics.get("scraping_active","—"), P.s_orange)
     row("SCORED OK",     metrics.get("scored_ok",      "—"), P.s_blue)
     blank()
 
-    # ── [EMAIL_ENGINE] ───────────────────────────────────────────────────────
     section("[ EMAIL_ENGINE ]")
-    row("QUEUED",     metrics.get("mail_queued",    "—"))
-    row("SENT",       metrics.get("mail_sent",      "—"), P.s_blue)
-    row("BOUNCED",    metrics.get("mail_bounced",   "—"), P.s_red)
-    row("SKIPPED",    metrics.get("mail_skipped",   "—"), P.s_yellow)
-    row("ERRORS",     metrics.get("mail_errors",    "—"), P.s_red)
+    row("QUEUED",  metrics.get("mail_queued",  "—"))
+    row("SENT",    metrics.get("mail_sent",    "—"), P.s_blue)
+    row("BOUNCED", metrics.get("mail_bounced", "—"), P.s_red)
+    row("SKIPPED", metrics.get("mail_skipped", "—"), P.s_yellow)
+    row("ERRORS",  metrics.get("mail_errors",  "—"), P.s_red)
     blank()
 
-    # ── [WA_ENGINE] ──────────────────────────────────────────────────────────
     section("[ WA_ENGINE ]")
-    row("QUEUED",     metrics.get("wa_queued",      "—"))
-    row("SENT",       metrics.get("wa_sent",        "—"), P.s_blue)
-    row("BOUNCED",    metrics.get("wa_bounced",     "—"), P.s_red)
-    row("ERRORS",     metrics.get("wa_errors",      "—"), P.s_red)
+    row("QUEUED",  metrics.get("wa_queued",  "—"))
+    row("SENT",    metrics.get("wa_sent",    "—"), P.s_blue)
+    row("BOUNCED", metrics.get("wa_bounced", "—"), P.s_red)
+    row("ERRORS",  metrics.get("wa_errors",  "—"), P.s_red)
     daily_cap = metrics.get("wa_daily_cap", 30)
     used      = metrics.get("wa_sent", 0)
-    row("DAILY CAP",  f"{used} / {daily_cap}",
-        P.s_orange if used >= daily_cap * 0.8 else P.s_chrome)
+    if not isinstance(used, int):
+        used = 0
+    row(
+        "DAILY CAP", f"{used} / {daily_cap}",
+        P.s_orange if used >= daily_cap * 0.8 else P.s_chrome,
+    )
 
     return Panel(
         tbl,
@@ -396,10 +364,6 @@ def _telemetry_panel(metrics: dict) -> Panel:
 
 
 def _syslog_panel(logs: list[str]) -> Panel:
-    """
-    Footer — raw event tape. Last N lines, no decoration.
-    Color coded: ERROR=red, WARNING=yellow, INFO=chassis dim.
-    """
     tape = Text(overflow="fold")
     for line in logs:
         upper = line.upper()
@@ -424,29 +388,26 @@ def _syslog_panel(logs: list[str]) -> Panel:
 
 
 def generate_dashboard(
-    state:   BotState,
-    metrics: dict,
-    logs:    list[str],
-    elapsed: str = "00:00:00",
-    phase:   str = "STANDBY",
-    tick:    int = 0,
+    state:      BotState,
+    metrics:    dict,
+    logs:       list[str],
+    elapsed:    str = "00:00:00",
+    phase:      str = "STANDBY",
+    tick:       int = 0,
     wa_qr_data: str = "",
 ) -> Layout:
     """
-    Pure function — takes state, returns a fully rendered Layout.
-    Call this once per refresh cycle inside your Live() loop.
+    Pure function — toma estado, devuelve un Layout completamente renderizado.
+    Llamar una vez por ciclo de refresh dentro del loop Live().
 
     Args:
-        state:   Current BotState enum value.
-        metrics: Flat dict of telemetry values (see _telemetry_panel keys).
-        logs:    List of recent log strings (newest last).
-        elapsed: Human-readable elapsed time string "HH:MM:SS".
-        phase:   Short description of the current pipeline phase.
-        tick:    Monotonically increasing integer for animation frames.
-        wa_qr_data: String containing the QR payload to render.
-
-    Returns:
-        rich.layout.Layout ready to be passed to live.update().
+        state:      BotState enum actual.
+        metrics:    Dict plano de telemetría (ver claves en _telemetry_panel).
+        logs:       Lista de strings de log recientes (el más nuevo al final).
+        elapsed:    Tiempo transcurrido "HH:MM:SS".
+        phase:      Descripción corta de la fase actual del pipeline.
+        tick:       Entero monotónicamente creciente para animaciones.
+        wa_qr_data: Payload string del QR de WhatsApp para renderizar en TUI.
     """
     root = Layout()
 
@@ -457,32 +418,31 @@ def generate_dashboard(
     )
 
     root["body"].split_row(
-        Layout(name="mascot", minimum_size=88),  # v12 QR → 79 chars, v14 → 87 chars
+        Layout(name="mascot", minimum_size=88),
         Layout(name="telemetry"),
     )
 
     root["header"].update(_header(elapsed, phase))
-    
+
     if wa_qr_data:
-        root["body"]["mascot"].update(_qr_panel(wa_qr_data))
+        # Leer tamaño de terminal en este instante para que lru_cache invalide
+        # correctamente si el usuario redimensiona la ventana.
+        t_cols, t_rows = shutil.get_terminal_size(fallback=(80, 24))
+        root["body"]["mascot"].update(_qr_panel(wa_qr_data, t_cols, t_rows))
     else:
         root["body"]["mascot"].update(_mascot_panel(state, tick))
-        
+
     root["body"]["telemetry"].update(_telemetry_panel(metrics))
-    root["footer"].update(_syslog_panel(logs[-14:]))   # last 14 lines max
+    root["footer"].update(_syslog_panel(logs[-14:]))
 
     return root
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# INTEGRATION SHIM — drop into main.py's _async_main()
+# INTEGRATION SHIM
 # ─────────────────────────────────────────────────────────────────────────────
 
 def bot_state_from_phase(phase_str: str) -> BotState:
-    """
-    Maps the free-text EstadoBot.fase_actual to a BotState enum.
-    Keeps main.py's EstadoBot intact — no changes to your data model.
-    """
     p = phase_str.lower()
     if any(k in p for k in ("dork", "duckg", "osint", "semilla")):
         return BotState.DORKING
@@ -498,12 +458,7 @@ def bot_state_from_phase(phase_str: str) -> BotState:
 
 
 def metrics_from_estado(snap: dict) -> dict:
-    """
-    Adapts your existing EstadoBot.snapshot() dict to the flat metrics
-    dict expected by generate_dashboard(). No EstadoBot changes required.
-    """
     return {
-        # OSINT
         "seeds_found":      snap.get("scraping_total", "—"),
         "scraping_total":   snap.get("scraping_total", "—"),
         "scraping_done":    snap.get("scraping_procesados", "—"),
@@ -511,13 +466,11 @@ def metrics_from_estado(snap: dict) -> dict:
         "scored_ok":        sum(
             1 for r in snap.get("terminados", []) if r.get("estado") == "OK"
         ),
-        # EMAIL
         "mail_queued":      snap.get("mail_procesadas", "—"),
         "mail_sent":        snap.get("mail_enviadas",   "—"),
-        "mail_bounced":     "—",   # add to EstadoBot if needed
+        "mail_bounced":     "—",
         "mail_skipped":     snap.get("mail_omitidas",   "—"),
         "mail_errors":      snap.get("mail_errores",    "—"),
-        # WA
         "wa_queued":        "—",
         "wa_sent":          "—",
         "wa_bounced":       "—",
@@ -553,24 +506,25 @@ if __name__ == "__main__":
         "wa_errors": 0, "wa_daily_cap": 30,
     }
 
-    STATES = [BotState.IDLE, BotState.DORKING, BotState.SCRAPING,
-              BotState.MAILING, BotState.WA, BotState.SUCCESS]
+    STATES = [
+        BotState.IDLE, BotState.DORKING, BotState.SCRAPING,
+        BotState.MAILING, BotState.WA, BotState.SUCCESS,
+    ]
 
-    async def _preview():
+    async def _preview() -> None:
         start = time.monotonic()
         tick  = 0
         with Live(auto_refresh=False, screen=False) as live:
             for state in STATES:
-                for _ in range(20):   # show each state for ~1 second
+                for _ in range(20):
                     elapsed_s = int(time.monotonic() - start)
                     h, rem = divmod(elapsed_s, 3600)
                     m, s   = divmod(rem, 60)
-                    elapsed = f"{h:02d}:{m:02d}:{s:02d}"
                     layout  = generate_dashboard(
                         state   = state,
                         metrics = DEMO_METRICS,
                         logs    = DEMO_LOGS,
-                        elapsed = elapsed,
+                        elapsed = f"{h:02d}:{m:02d}:{s:02d}",
                         phase   = state.name,
                         tick    = tick,
                     )

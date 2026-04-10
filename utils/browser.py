@@ -6,7 +6,9 @@ Dependencias: playwright
 """
 from __future__ import annotations
 
-from playwright.async_api import BrowserContext
+import aiofiles
+from pathlib import Path
+from playwright.async_api import BrowserContext, Page
 
 # ---------------------------------------------------------------------------
 # Argumentos de lanzamiento de Chromium
@@ -24,26 +26,12 @@ CHROMIUM_ARGS: list[str] = [
     "--disable-background-networking",
 ]
 
-# ---------------------------------------------------------------------------
-# Script de anti-detección de webdriver
-# Se inyecta vía add_init_script() antes de que cualquier página cargue.
-# ---------------------------------------------------------------------------
-ANTI_DETECTION_SCRIPT: str = """
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    Object.defineProperty(navigator, 'plugins',   { get: () => [1, 2, 3] });
-    Object.defineProperty(navigator, 'languages', { get: () => ['es-AR', 'es', 'en'] });
-    if (window.chrome) { window.chrome.runtime = {}; }
-"""
+async def apply_stealth(context_or_page: BrowserContext | Page) -> None:
+    """Inyecta el payload stealth nativo para evadir detección."""
+    stealth_path = Path(__file__).parent / "stealth.min.js"
+    
+    async with aiofiles.open(stealth_path, mode='r') as f:
+        stealth_js = await f.read()
 
-
-async def apply_stealth(context: BrowserContext) -> None:
-    """
-    Aplica el script de anti-detección a un BrowserContext de Playwright.
-
-    Llamar después de crear el contexto y antes de abrir cualquier página,
-    para que el script se inyecte en todos los frames subsiguientes.
-
-    Args:
-        context: Contexto de Playwright activo (stealth o persistente).
-    """
-    await context.add_init_script(ANTI_DETECTION_SCRIPT)
+    if hasattr(context_or_page, 'add_init_script'):
+        await context_or_page.add_init_script(stealth_js)

@@ -10,14 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import subprocess
-import time
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+import time as _time
 
 from playwright.async_api import (
     async_playwright,
@@ -29,12 +27,12 @@ from playwright.async_api import (
 
 from config import (
     SENDER_NAME,
-    WA_JITTER_MIN_S,g
+    WA_JITTER_MIN_S,      # FIX: stray 'g' eliminado
     WA_JITTER_MAX_S,
     WA_LIMITE_DIARIO,
     COOLDOWN_WA_DAYS,
 )
-from utils.phone import extraer_numeros_whatsapp   # re-export para compatibilidad con CLI
+from utils.phone import extraer_numeros_whatsapp
 from utils.browser import CHROMIUM_ARGS, apply_stealth
 from db_manager import get_connection
 
@@ -129,11 +127,9 @@ class ContactoWA:
 
 def get_contactos_whatsapp_pendientes(
     limit: int = 20,
-    cooldown_days: int = COOLDOWN_WA_DAYS,   # REFACTOR: desde config
+    cooldown_days: int = COOLDOWN_WA_DAYS,
 ) -> list[ContactoWA]:
-    """
-    Retorna contactos de tipo 'WhatsApp' sin envío reciente (cooldown).
-    """
+    """Retorna contactos de tipo 'WhatsApp' sin envío reciente (cooldown)."""
     cutoff: str = (
         datetime.now(tz=timezone.utc) - timedelta(days=cooldown_days)
     ).isoformat()
@@ -217,33 +213,37 @@ def count_envios_wa_hoy() -> int:
 # Autenticación WhatsApp Web
 # ─────────────────────────────────────────────────────────────────────────────
 
-import time as _time
+def _set_qr_data(estado: Optional[object], payload: str) -> None:
+    """
+    Escribe el payload del QR en estado.wa_qr_data de forma thread-safe.
+    Falla silenciosamente si estado no tiene los atributos esperados.
+    """
+    if estado is None:
+        return
+    try:
+        with estado._lock:
+            estado.wa_qr_data = payload
+    except AttributeError:
+        pass
 
 
 async def _esperar_autenticacion(
-    page: "Page",
+    page: Page,
     estado: Optional[object] = None,
 ) -> bool:
-    """
-    Authenticates a WhatsApp Web session with robust wall-clock timeout tracking.
-
-    FIX #9: elapsed_ms was incremented by poll_interval regardless of how long
-    wait_for_selector actually took, making the 2-minute ceiling and the 18-second
-    recapture interval both inaccurate. This version uses time.monotonic() for
-    all time comparisons.
-    """
     import subprocess as _subprocess
     from pathlib import Path as _Path
 
-    viewer_proc: Optional[_subprocess.Popen] = None  # type: ignore[type-arg]
+    viewer_proc: Optional[_subprocess.Popen] = None
     QR_IMAGE_PATH = _Path(__file__).parent / "wa_qr.png"
 
     deadline       = _time.monotonic() + (TIMEOUT_QR_MS / 1_000)
     last_recapture = _time.monotonic()
     RECAPTURE_S    = 18.0
+    POLL_TIMEOUT_MS = 2_000
 
     try:
-        # Phase 1: check for an active cached session
+        # ── Fase 1: sesión activa en caché ───────────────────────────────────
         try:
             await page.wait_for_selector(_SEL["main"], timeout=8_000)
             logger.info("✓ Sesión activa detectada (sin QR requerido).")
@@ -251,7 +251,7 @@ async def _esperar_autenticacion(
         except PlaywrightTimeoutError:
             pass
 
-        # Phase 2: wait for QR canvas
+        # ── Fase 2: esperar canvas del QR ────────────────────────────────────
         try:
             qr_element = await page.wait_for_selector(_SEL["qr"], timeout=20_000)
         except PlaywrightTimeoutError:
@@ -261,7 +261,7 @@ async def _esperar_autenticacion(
         if qr_element is None:
             return False
 
-        # Phase 3: screenshot + open viewer
+        # ── Fase 3: screenshot inicial + abrir visor ─────────────────────────
         await qr_element.screenshot(path=str(QR_IMAGE_PATH))
         logger.info("QR capturado en: %s", QR_IMAGE_PATH)
 
@@ -280,26 +280,39 @@ async def _esperar_autenticacion(
                 "xdg-open no encontrado. Imagen en: %s — abrila manualmente.",
                 QR_IMAGE_PATH,
             )
-        
+
+        _set_qr_data(estado, "")
         if estado is not None:
             try:
-                with estado._lock:  # type: ignore[attr-defined]
-                    estado.fase_actual = "WA Auth: QR abierto — esperando escaneo…"  # type: ignore[attr-defined]
+                with estado._lock
+                    estado.fase_actual = "WA Auth: QR abierto — esperando escaneo…"
             except AttributeError:
                 pass
 
-        # Phase 4: poll loop with wall-clock tracking
-        POLL_TIMEOUT_MS = 2_000
-
+        # ── Fase 4: polling loop con extracción activa del payload ────────────
         while _time.monotonic() < deadline:
+
+            # 4a. ¿Ya se autenticó?
             try:
                 await page.wait_for_selector(_SEL["main"], timeout=POLL_TIMEOUT_MS)
                 logger.info("✓ QR escaneado. Sesión de WhatsApp Web activa.")
+                _set_qr_data(estado, "")
                 return True
             except PlaywrightTimeoutError:
                 pass
 
-            # Recapture on wall-clock interval, not poll count
+            # 4b. Extraer payload data-ref para la TUI (FIX v2.1)
+            try:
+                qr_div = await page.query_selector(_SEL["qr_data"])
+                if qr_div:
+                    qr_ref = await qr_div.get_attribute("data-ref")
+                    if qr_ref:
+                        _set_qr_data(estado, qr_ref)
+                        logger.debug("QR payload actualizado | len=%d", len(qr_ref))
+            except PlaywrightError as exc:
+                logger.debug("Error extrayendo data-ref: %s", str(exc)[:80])
+
+            # 4c. Recaptura de screenshot en intervalo de tiempo de pared
             now = _time.monotonic()
             if now - last_recapture >= RECAPTURE_S:
                 last_recapture = now
@@ -307,19 +320,27 @@ async def _esperar_autenticacion(
                     qr_element = await page.query_selector(_SEL["qr"])
                     if qr_element:
                         await qr_element.screenshot(path=str(QR_IMAGE_PATH))
+                        elapsed = now - (deadline - TIMEOUT_QR_MS / 1_000)
                         logger.info(
                             "QR rotado — imagen actualizada (%.0fs transcurridos).",
-                            now - (deadline - TIMEOUT_QR_MS / 1_000),
+                            elapsed,
                         )
                     else:
-                        logger.info("Canvas del QR ausente — posiblemente en proceso de login.")
+                        logger.info(
+                            "Canvas del QR ausente — posiblemente en proceso de login."
+                        )
                 except PlaywrightError:
                     pass
 
-        logger.error("Timeout: QR no escaneado en %.0f segundos.", TIMEOUT_QR_MS / 1_000)
+        logger.error(
+            "Timeout: QR no escaneado en %.0f segundos.", TIMEOUT_QR_MS / 1_000
+        )
         return False
 
     finally:
+        # Siempre limpiar: evita que la TUI muestre un QR expirado post-sesión.
+        _set_qr_data(estado, "")
+
         if viewer_proc is not None:
             try:
                 viewer_proc.terminate()
@@ -382,7 +403,7 @@ async def _verificar_popup_invalido(page: Page) -> bool:
 
         if es_invalido:
             logger.warning("Popup de número inválido | texto='%s'", texto_popup[:80])
-            popup_ok_selectors: tuple[str, ...] = _SEL["popup_ok"]  # type: ignore[assignment]
+            popup_ok_selectors: tuple[str, ...] = _SEL["popup_ok"]
             for sel_ok in popup_ok_selectors:
                 try:
                     ok_btn = page.locator(sel_ok).first
@@ -406,7 +427,6 @@ async def enviar_mensaje_wa(
     dry_run: bool = False,
 ) -> ResultadoEnvioWA:
     """Envía un mensaje a un número de WhatsApp via URL directa."""
-    import random as _random
     mensaje  = _construir_mensaje(contacto.nombre_empresa)
     url_send = WA_SEND_URL.format(
         phone=urllib.parse.quote(contacto.numero),
@@ -424,10 +444,15 @@ async def enviar_mensaje_wa(
             exito=True, estado="enviado", detalle="dry-run",
         )
 
-    logger.info("Enviando WA | empresa='%s' | numero=%s", contacto.nombre_empresa, contacto.numero)
+    logger.info(
+        "Enviando WA | empresa='%s' | numero=%s",
+        contacto.nombre_empresa, contacto.numero,
+    )
 
     try:
-        response = await page.goto(url_send, wait_until="domcontentloaded", timeout=TIMEOUT_NAV_MS)
+        response = await page.goto(
+            url_send, wait_until="domcontentloaded", timeout=TIMEOUT_NAV_MS
+        )
         if response and response.status in (403, 429, 500, 503):
             return ResultadoEnvioWA(
                 numero=contacto.numero, empresa=contacto.nombre_empresa,
@@ -441,7 +466,8 @@ async def enviar_mensaje_wa(
             return ResultadoEnvioWA(
                 numero=contacto.numero, empresa=contacto.nombre_empresa,
                 empresa_id=contacto.empresa_id,
-                exito=False, estado="rebotado", detalle="Número no registrado en WhatsApp",
+                exito=False, estado="rebotado",
+                detalle="Número no registrado en WhatsApp",
             )
 
         if not await _click_send_button(page):
@@ -455,11 +481,15 @@ async def enviar_mensaje_wa(
             return ResultadoEnvioWA(
                 numero=contacto.numero, empresa=contacto.nombre_empresa,
                 empresa_id=contacto.empresa_id,
-                exito=False, estado="error", detalle="Botón de enviar no encontrado",
+                exito=False, estado="error",
+                detalle="Botón de enviar no encontrado",
             )
 
         await asyncio.sleep(2.5)
-        logger.info("✓ WA enviado | empresa='%s' | numero=%s", contacto.nombre_empresa, contacto.numero)
+        logger.info(
+            "✓ WA enviado | empresa='%s' | numero=%s",
+            contacto.nombre_empresa, contacto.numero,
+        )
         return ResultadoEnvioWA(
             numero=contacto.numero, empresa=contacto.nombre_empresa,
             empresa_id=contacto.empresa_id, exito=True, estado="enviado",
@@ -475,14 +505,18 @@ async def enviar_mensaje_wa(
         return ResultadoEnvioWA(
             numero=contacto.numero, empresa=contacto.nombre_empresa,
             empresa_id=contacto.empresa_id,
-            exito=False, estado="error", detalle=f"Playwright error: {str(exc)[:80]}",
+            exito=False, estado="error",
+            detalle=f"Playwright error: {str(exc)[:80]}",
         )
     except Exception as exc:
-        logger.exception("Error inesperado | numero=%s | %s", contacto.numero, exc)
+        logger.exception(
+            "Error inesperado | numero=%s | %s", contacto.numero, exc
+        )
         return ResultadoEnvioWA(
             numero=contacto.numero, empresa=contacto.nombre_empresa,
             empresa_id=contacto.empresa_id,
-            exito=False, estado="error", detalle=f"Error inesperado: {str(exc)[:80]}",
+            exito=False, estado="error",
+            detalle=f"Error inesperado: {str(exc)[:80]}",
         )
 
 
@@ -494,7 +528,7 @@ async def procesar_envios_wa(
     limite: int = 20,
     dry_run: bool = False,
     headless: bool = False,
-    estado: Optional["EstadoBot"] = None,
+    estado: Optional[object] = None,
 ) -> dict[str, int]:
     """
     Pipeline completo: cuota diaria → contactos pendientes →
@@ -510,7 +544,8 @@ async def procesar_envios_wa(
     cuota_restante = max(0, WA_LIMITE_DIARIO - enviados_hoy)
     if cuota_restante == 0:
         logger.warning(
-            "Cuota diaria WA alcanzada (%d mensajes). Ejecutar mañana.", WA_LIMITE_DIARIO
+            "Cuota diaria WA alcanzada (%d mensajes). Ejecutar mañana.",
+            WA_LIMITE_DIARIO,
         )
         return metricas
 
@@ -520,7 +555,9 @@ async def procesar_envios_wa(
         enviados_hoy, WA_LIMITE_DIARIO, cuota_restante, limite_efectivo,
     )
 
-    contactos = await asyncio.to_thread(get_contactos_whatsapp_pendientes, limite_efectivo)
+    contactos = await asyncio.to_thread(
+        get_contactos_whatsapp_pendientes, limite_efectivo
+    )
     if not contactos:
         logger.info("No hay contactos WA pendientes.")
         return metricas
@@ -531,7 +568,7 @@ async def procesar_envios_wa(
         context = await pw.chromium.launch_persistent_context(
             user_data_dir=str(WA_PROFILE_DIR),
             headless=headless,
-            args=CHROMIUM_ARGS,   # REFACTOR: desde utils.browser
+            args=CHROMIUM_ARGS,
             ignore_https_errors=False,
             locale="es-AR",
             timezone_id="America/Argentina/Buenos_Aires",
@@ -543,19 +580,23 @@ async def procesar_envios_wa(
             ),
         )
 
-        await apply_stealth(context)   # REFACTOR: desde utils.browser
+        await apply_stealth(context)
 
         try:
             pages = context.pages
             page  = pages[0] if pages else await context.new_page()
 
             if WA_BASE_URL not in page.url:
-                await page.goto(WA_BASE_URL, wait_until="domcontentloaded", timeout=TIMEOUT_NAV_MS)
+                await page.goto(
+                    WA_BASE_URL, wait_until="domcontentloaded", timeout=TIMEOUT_NAV_MS
+                )
 
             if not dry_run:
                 autenticado = await _esperar_autenticacion(page, estado)
                 if not autenticado:
-                    logger.error("No se pudo autenticar en WhatsApp Web. Abortando.")
+                    logger.error(
+                        "No se pudo autenticar en WhatsApp Web. Abortando."
+                    )
                     return metricas
             else:
                 logger.info("[DRY-RUN] Saltando verificación de sesión WA.")
@@ -571,7 +612,9 @@ async def procesar_envios_wa(
 
                 if not es_primer_envio and not dry_run:
                     sleep_s = _random.randint(WA_JITTER_MIN_S, WA_JITTER_MAX_S)
-                    logger.info("Rate limit: %d seg (~%.1f min)…", sleep_s, sleep_s / 60)
+                    logger.info(
+                        "Rate limit: %d seg (~%.1f min)…", sleep_s, sleep_s / 60
+                    )
                     await asyncio.sleep(sleep_s)
 
                 resultado = await enviar_mensaje_wa(page, contacto, dry_run=dry_run)
@@ -604,8 +647,10 @@ async def procesar_envios_wa(
             logger.info("Contexto WA cerrado.")
 
     logger.info(
-        "=== Campaña WA finalizada | procesados=%d | enviados=%d | rebotados=%d | errores=%d ===",
-        metricas["procesados"], metricas["enviados"], metricas["rebotados"], metricas["errores"],
+        "=== Campaña WA finalizada | procesados=%d | enviados=%d | "
+        "rebotados=%d | errores=%d ===",
+        metricas["procesados"], metricas["enviados"],
+        metricas["rebotados"],  metricas["errores"],
     )
     return metricas
 
@@ -636,7 +681,10 @@ if __name__ == "__main__":
     parser.add_argument("--limite",     type=int,  default=10)
     parser.add_argument("--dry-run",    action="store_true", dest="dry_run")
     parser.add_argument("--headless",   action="store_true")
-    parser.add_argument("--test-regex", type=str,  default=None, dest="test_regex", metavar="TEXTO")
+    parser.add_argument(
+        "--test-regex", type=str, default=None,
+        dest="test_regex", metavar="TEXTO",
+    )
     args = parser.parse_args()
 
     if args.test_regex:
@@ -652,7 +700,9 @@ if __name__ == "__main__":
     try:
         metricas = asyncio.run(
             procesar_envios_wa(
-                limite=args.limite, dry_run=args.dry_run, headless=args.headless,
+                limite=args.limite,
+                dry_run=args.dry_run,
+                headless=args.headless,
             )
         )
         print(f"\nResultado: {metricas}")

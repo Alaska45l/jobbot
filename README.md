@@ -14,7 +14,11 @@ JobBot es un pipeline asíncrono de prospección B2B y contacto automatizado. Ut
 
 ## <img src="https://api.iconify.design/material-symbols/lightbulb.svg?color=%23007acc" width="24" height="24" align="center"> Why JobBot? (Architecture & Philosophy)
 
-JobBot es la digitalización de "caminar la calle entregando currículums", pero con una arquitectura de grado servidor.
+JobBot nace de una necesidad real y de la frustración con el ecosistema actual de reclutamiento. Después de meses de enviar solicitudes a través de portales tradicionales (ZonaJobs, Randstad, Bumeran, LinkedIn) con tasas de respuesta bajísimas, decidí cambiar la estrategia y volver a lo básico: entregar el CV directamente en la puerta de la empresa. Pero en lugar de hacerlo a pie una tarde de lluvia, decidí automatizarlo.
+
+Al buscar herramientas de automatización de Cold Emailing u OSINT en GitHub, me encontré con un problema: casi todos los repositorios actuales son simples "wrappers" que requieren tarjetas de crédito para pagar costosas APIs de IA generativa (OpenAI, Claude) solo para leer un HTML básico.
+
+Por eso construí JobBot bajo una filosofía técnica estricta:
 
 * **Determinismo sobre Alucinación:** El bot no utiliza LLMs para tareas de clasificación. Emplea un motor léxico propio en Python puro con expresiones regulares para decidir el score del prospecto sin equivocarse.
 * **Evasión Stealth:** Supera protecciones como Cloudflare o Datadome utilizando `playwright-stealth`, rotación de contextos, spoofing de zona horaria y simulación de biometría humana (movimientos de mouse y scroll aleatorio).

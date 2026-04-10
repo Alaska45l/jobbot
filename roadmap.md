@@ -37,7 +37,7 @@ Expansión de las vías de contacto y automatización de la creación de perfile
 
         Renderizar a PDF en milisegundos con typ o pdfkit antes de adjuntarlo.
 
-    [ ] Mascota Interactiva en la TUI:
+    [x] Mascota Interactiva en la TUI:
 
         Agregar un panel en la interfaz gráfica de la terminal con ASCII Art dinámico (estilo Claude Code).
 

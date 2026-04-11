@@ -54,6 +54,8 @@ CHROMIUM_ARGS = [
     "--disable-dev-shm-usage",
     "--disable-features=IsolateOrigins,site-per-process",
     "--lang=es-AR,es;q=0.9",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
 ]
 
 PRIORITY_PATHS: tuple[str, ...] = (

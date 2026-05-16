@@ -115,6 +115,7 @@ def _escape_typst_text(value: str) -> str:
         "[": "\\[",
         "]": "\\]",
         "$": "\\$",
+        "@": "\\@",
     }
     escaped = value
     for original, replacement in replacements.items():

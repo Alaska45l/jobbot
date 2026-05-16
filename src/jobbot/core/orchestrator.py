@@ -979,7 +979,7 @@ async def pipeline_mail(args: argparse.Namespace, estado: EstadoBot) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def pipeline_wa(args: argparse.Namespace, estado: EstadoBot) -> None:
-    from wa_sender import procesar_envios_wa
+    from jobbot.outreach.wa_sender import procesar_envios_wa
     estado.fase_actual = "Campaña WhatsApp en progreso…"
     with estado._lock:
         estado.target = "WA Web — esperando sesión…"

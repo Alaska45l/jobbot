@@ -5,7 +5,8 @@
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Playwright-Stealth-2EAD33?style=flat-square&logo=playwright&logoColor=white" alt="Playwright">
   <img src="https://img.shields.io/badge/Typst-Dynamic_CV-239BBE?style=flat-square&logo=typst&logoColor=white" alt="Typst">
-  <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite3">
+  <img src="https://img.shields.io/badge/SQLite-WAL-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite3">
+  <img src="https://img.shields.io/badge/asyncio-Producer_Consumer-FFD43B?style=flat-square&logo=python&logoColor=black" alt="asyncio">
 </div>
 
 ---
@@ -29,17 +30,107 @@ Por eso construí JobBot bajo una filosofía técnica estricta:
 
 ## <img src="https://api.iconify.design/material-symbols/layers-outline.svg?color=%23007acc" width="24" height="24" align="center"> Arquitectura y Características
 
+* **Pipeline Producer-Consumer:** Arquitectura asíncrona con `asyncio.Queue` para dorking y scraping concurrente con semáforos, resolviendo deadlocks mediante SENTINEL patterns y `consumer_ready` events.
 * **Dorking Engine Nacional:** Automatiza consultas avanzadas leyendo listas de rubros dinámicas desde un archivo externo (`rubros.txt`).
-* **Rich TUI (Terminal User Interface):** Un panel de control y telemetría inspirado en la estética retro-futurista de terminales de monitoreo.
-* **Módulo WhatsApp Web:** Despacho automatizado de mensajes de presentación directa a líneas celulares extraídas de la web, con manejo de sesiones locales y rate-limits adaptables.
-* **Smart Dispatcher (SMTP):** Cliente de correo con soporte para Dry-Run y colas asíncronas.
+* **3 Perfiles de CV Dinámicos:** Asignación automática de plantilla según el scoring: `CV_Tech` (software, pentesting, full-stack), `CV_Admin_IT` (AFIP, POS, oficina, soporte), `CV_Hybrid` (operaciones + infraestructura IT).
+* **12×12 Email Templates:** 12 asuntos y 12 cuerpos con tonos variados (formal, conversacional, directo, storytelling, problem-solving) para evitar detección como correo automatizado.
+* **Rich TUI (Terminal User Interface):** Un panel de control y telemetría inspirado en la estética retro-futurista de Teenage Engineering, con mascota animada por estado.
+* **Módulo WhatsApp Web:** Despacho automatizado de mensajes de presentación a líneas celulares extraídas de la web, con sesiones persistentes y rate-limits adaptables.
+* **Smart Dispatcher (SMTP):** Cliente de correo con soporte para Dry-Run, jitter anti-ban y colas asíncronas.
+* **Lead Scoring con Señales Negativas:** Motor léxico que excluye portales de noticias, blogs y e-commerce B2C antes de evaluar contactos, con trazabilidad de penalizaciones.
 
 ---
 
-## <img src="https://api.iconify.design/material-symbols/settings-outline.svg?color=%23007acc" width="24" height="24" align="center"> Configuración del Entorno
+## <img src="https://api.iconify.design/material-symbols/folder-open-outline.svg?color=%23007acc" width="24" height="24" align="center"> Estructura del Proyecto
 
-### 1. Variables de Entorno (`.env`)
-Crear un archivo `.env` en la raíz del proyecto para credenciales sensibles:
+```
+jobbot/
+├── pyproject.toml                    # Metadata, dependencias, entry points
+├── .env.example                      # Plantilla de variables de entorno
+├── rubros.txt                        # Sectores industriales (uno por línea)
+├── roadmap.md                        # Hoja de ruta del producto
+├── README.md
+├── src/
+│   └── jobbot/
+│       ├── __init__.py               # Paquete raíz, versión
+│       ├── __main__.py               # python -m jobbot
+│       ├── cli.py                    # Argparse, validación, entry point
+│       ├── config.py                 # Variables de entorno centralizadas
+│       ├── core/
+│       │   └── orchestrator.py       # Pipelines, estado, TUI loop
+│       ├── cv/
+│       │   ├── builder.py            # Compilación Typst asíncrona
+│       │   ├── profiles.py           # 3 perfiles con datos reales del CV
+│       │   └── templates/
+│       │       ├── cv_tech.typ       # Plantilla: Software & Security
+│       │       ├── cv_admin_it.typ   # Plantilla: Admin, Ops & IT Support
+│       │       └── cv_hybrid.typ     # Plantilla: Operaciones IT híbridas
+│       ├── db/
+│       │   ├── manager.py            # SQLite WAL, migraciones, CRUD
+│       │   ├── models.py             # Dataclasses (Empresa, Contacto, Envio)
+│       │   └── queries.py            # SQL queries extraídas
+│       ├── outreach/
+│       │   ├── mailer.py             # Motor SMTP con CV dinámico
+│       │   ├── wa_sender.py          # Motor WhatsApp Web
+│       │   └── templates.py          # 12 asuntos × 12 cuerpos × firma
+│       ├── scoring/
+│       │   └── engine.py             # Scoring léxico + señales negativas
+│       ├── scraper/
+│       │   ├── engine.py             # Playwright stealth, procesar_dominio
+│       │   ├── stealth.py            # Contextos aislados, resource blocking
+│       │   └── navigation.py         # Navegación deep, priority paths
+│       ├── tui/
+│       │   ├── dashboard.py          # Paneles Rich, telemetría
+│       │   ├── mascot.py             # Mascota 8-bit animada
+│       │   └── state.py              # BotState, EstadoBot
+│       └── utils/
+│           ├── browser.py            # apply_stealth()
+│           ├── phone.py              # Extracción de números WhatsApp
+│           ├── domain.py             # Validación y extracción de dominios
+│           └── stealth.min.js        # JS injection antibot
+├── tests/
+│   ├── test_scoring.py
+│   ├── test_cv_builder.py
+│   ├── test_db.py
+│   └── test_outreach_templates.py
+└── cvs/
+    ├── template.typ                  # Plantilla Typst legacy (fallback)
+    └── perfil.jpg                    # Foto de perfil para el CV
+```
+
+---
+
+## <img src="https://api.iconify.design/material-symbols/settings-outline.svg?color=%23007acc" width="24" height="24" align="center"> Instalación
+
+### 1. Clonar y crear entorno virtual
+
+```bash
+git clone https://github.com/alaska45l/jobbot.git
+cd jobbot
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Instalar dependencias
+
+```bash
+# Producción
+pip install -e .
+
+# Desarrollo (incluye pytest)
+pip install -e '.[dev]'
+
+# Playwright necesita sus navegadores
+playwright install chromium
+```
+
+### 3. Variables de Entorno (`.env`)
+
+Copiar la plantilla y completar con tus credenciales:
+
+```bash
+cp .env.example .env
+```
 
 ```env
 # Servidor SMTP (Recomendado: Gmail con App Password)
@@ -54,20 +145,32 @@ GITHUB_USER="TuUsuarioGitHub"
 LINKEDIN_USER="TuUsuarioLinkedIn"
 ```
 
-### 2\. Dependencias Externas del Sistema
+### 4. Dependencias Externas del Sistema
 
-  * **Typst:** Se requiere el binario de Typst en el `PATH` para la compilación dinámica de CVs (`cargo install typst-cli` o vía su repositorio oficial).
-  * **Plantillas CV:** Las plantillas por perfil viven en `src/jobbot/cv/templates/` (opcional: imagen en `cvs/perfil.jpg`).
+  * **Typst:** Se requiere el binario de Typst en el `PATH` para la compilación dinámica de CVs.
 
------
+    ```bash
+    # Opción 1: Cargo
+    cargo install typst-cli
+
+    # Opción 2: Binario precompilado
+    # https://github.com/typst/typst/releases
+
+    # Verificar
+    typst --version
+    ```
+
+  * **Plantillas CV:** Las plantillas por perfil viven en `src/jobbot/cv/templates/`. La imagen de perfil es opcional en `cvs/perfil.jpg`.
+
+---
 
 ## <img src="https://api.iconify.design/material-symbols/terminal.svg?color=%23007acc" width="24" height="24" align="center"> Uso del Pipeline
 
-El sistema se opera mediante el paquete CLI (`jobbot` o `python -m jobbot`).
+El sistema se opera mediante el CLI `jobbot` (instalado via `pip install -e .`) o `python -m jobbot`.
 
 ### Modo Daemon (Recomendado)
 
-Ejecuta el ciclo completo (Dork -\> Scrape -\> Mail) en un loop infinito con manejo de timeouts y descansos anti-ban.
+Ejecuta el ciclo completo (Dork → Scrape → Mail) en un loop infinito con manejo de timeouts y descansos anti-ban.
 
 ```bash
 jobbot --auto --concurrencia 3
@@ -87,6 +190,12 @@ jobbot --dork --rubros-file rubros.txt --limite-dork 30
 jobbot --scrape --concurrencia 3
 ```
 
+**Fase 2b: Dork + Scrape en paralelo (Producer-Consumer)**
+
+```bash
+jobbot --dork-scrape --concurrencia 2
+```
+
 **Fase 3: Despacho (Mailing o WhatsApp)**
 
 ```bash
@@ -99,11 +208,25 @@ jobbot --mail --min-score 55
 jobbot --wa
 ```
 
------
+---
+
+## <img src="https://api.iconify.design/material-symbols/description-outline.svg?color=%23007acc" width="24" height="24" align="center"> Perfiles de CV
+
+El scoring engine asigna automáticamente uno de 3 perfiles al compilar el CV para cada empresa:
+
+| Perfil | Cuándo se asigna | Foco del CV |
+| :--- | :--- | :--- |
+| `CV_Tech` | Software houses, consultoras IT, ciberseguridad | Go, Rust, SvelteKit, pentesting, INVARIANT SYSTEM, CI/CD |
+| `CV_Admin_IT` | Clínicas, estudios, inmobiliarias, PyMEs sin equipo dev | AFIP, POS Morphi, stock, soporte HW/SW, Excel, Windows Server |
+| `CV_Hybrid` | Logística, manufactura, empresas medianas con depto. de sistemas | Operaciones + IT, Python automation, redes, soporte + admin |
+
+El perfil `CV_Hybrid` se activa cuando el scoring detecta que una empresa cruza señales tech **y** admin simultáneamente (≥2 keywords de cada uno), o cuando dominan keywords operacionales-IT como "logística", "sucursales", "ERP", "mesa de ayuda".
+
+---
 
 ## <img src="https://api.iconify.design/material-symbols/database.svg?color=%23007acc" width="24" height="24" align="center"> Gestión de Base de Datos
 
-Toda la metadata se almacena en `jobbot.db`. Para reiniciar métricas, liberar el cooldown de 90 días o realizar un borrado de la base (Wipe), utilice su cliente SQL preferido:
+Toda la metadata se almacena en `jobbot.db` (SQLite, WAL mode). Para reiniciar métricas, liberar el cooldown de 90 días o realizar un borrado:
 
 ```sql
 -- Limpiar historial de envíos (reinicia el cooldown de SMTP)
@@ -114,18 +237,63 @@ DELETE FROM contactos;
 DELETE FROM empresas;
 ```
 
------
+---
+
+## <img src="https://api.iconify.design/material-symbols/science-outline.svg?color=%23007acc" width="24" height="24" align="center"> Tests
+
+```bash
+# Instalar dependencias de desarrollo
+pip install -e '.[dev]'
+
+# Ejecutar test suite
+pytest -q
+
+# Solo py_compile (sin pytest)
+python -m py_compile src/jobbot/cli.py src/jobbot/scoring/engine.py
+```
+
+---
 
 ## <img src="https://api.iconify.design/material-symbols/list-alt-outline.svg?color=%23007acc" width="24" height="24" align="center"> Referencia CLI
 
 | Argumento | Tipo | Default | Descripción |
 | :--- | :--- | :--- | :--- |
-| `--auto` | Flag | False | Inicia el Daemon de ejecución continua 24/7. |
-| `--dork` | Flag | False | Ejecuta el módulo de búsqueda OSINT. |
-| `--rubros-file` | String | rubros.txt | Archivo txt con la lista dinámica de rubros. |
-| `--scrape` | Flag | False | Ejecuta el módulo Playwright Stealth. |
-| `--concurrencia` | Int | 3 | Threads de navegadores en paralelo. |
-| `--mail` | Flag | False | Ejecuta el motor SMTP con Typst. |
-| `--wa` | Flag | False | Ejecuta el motor de envíos por WhatsApp Web. |
-| `--min-score` | Int | 55 | Puntaje mínimo de la DB para prospectar. |
-| `--dry-run` | Flag | False | Simula el envío sin accionar SMTP/WA. |
+| `--auto` | Flag | — | Inicia el Daemon de ejecución continua 24/7. |
+| `--dork` | Flag | — | Solo dorking (semillas a DB, sin scraping). |
+| `--scrape` | Flag | — | Solo scraping (dominios pendientes desde DB). |
+| `--dork-scrape` | Flag | — | Dork + Scrape en paralelo (Producer-Consumer). |
+| `--mail` | Flag | — | Ejecuta el motor SMTP con Typst. |
+| `--wa` | Flag | — | Ejecuta el motor de envíos por WhatsApp Web. |
+| `--rubros-file` | String | `rubros.txt` | Archivo txt con la lista dinámica de rubros. |
+| `--limite-dork` | Int | `30` | Número máximo de resultados por rubro. |
+| `--concurrencia` | Int | `2` | Instancias Playwright en paralelo (máx 10). |
+| `--min-score` | Int | `55` | Puntaje mínimo para envío automático. |
+| `--dry-run` | Flag | — | Simula el envío sin accionar SMTP/WA. |
+| `--limite` | Int | `10` | Límite de empresas a procesar. |
+| `--headless` | Flag | — | Forzar modo headless en Playwright. |
+| `--forzar-rescraping` | Flag | — | Ignorar cooldown de scraping. |
+
+> **Nota:** Los modos (`--auto`, `--dork`, `--scrape`, `--dork-scrape`, `--mail`, `--wa`) son mutuamente excluyentes.
+
+---
+
+## <img src="https://api.iconify.design/material-symbols/build-outline.svg?color=%23007acc" width="24" height="24" align="center"> Tech Stack
+
+| Capa | Tecnología |
+| :--- | :--- |
+| Lenguaje | Python 3.11+ |
+| Async | `asyncio` (Producer-Consumer, `Queue`, `Event`, semáforos) |
+| Browser | Playwright (Chromium, headless, stealth contexts) |
+| Base de datos | SQLite3 (WAL, `STRICT` tables, foreign keys) |
+| CV Compiler | Typst CLI (binario externo, 3 plantillas `.typ`) |
+| Email | `smtplib` + `email.message.EmailMessage` |
+| WhatsApp | Playwright con `user_data_dir` persistente |
+| TUI | Rich (`Live`, `Layout`, `Panel`, mascota animada) |
+| Env | python-dotenv |
+| Search | `ddgs` (DuckDuckGo search) |
+
+---
+
+<div align="center">
+  <sub>CV dynamically generated with JobBot · <a href="https://github.com/alaska45l/jobbot">github.com/alaska45l/jobbot</a></sub>
+</div>

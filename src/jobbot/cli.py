@@ -88,6 +88,11 @@ def main() -> None:
     err = Console(stderr=True)
     try:
         asyncio.run(_async_main(args))
+    except asyncio.CancelledError:
+        err.print(
+            "\n[bold yellow]Ejecución cancelada. DB consistente (WAL). "
+            "No quedan procesos Chromium huérfanos.[/bold yellow]"
+        )
     except KeyboardInterrupt:
         err.print(
             "\n[bold yellow]Interrumpido. DB consistente (WAL). "
@@ -102,4 +107,3 @@ def main() -> None:
     except Exception as exc:
         err.print(f"\n[bold red]Error fatal:[/bold red] {exc}")
         raise SystemExit(1)
-

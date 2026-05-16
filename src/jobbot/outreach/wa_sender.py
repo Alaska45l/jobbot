@@ -25,16 +25,16 @@ from playwright.async_api import (
     Error as PlaywrightError,
 )
 
-from config import (
+from jobbot.config import (
     SENDER_NAME,
     WA_JITTER_MIN_S,      # FIX: stray 'g' eliminado
     WA_JITTER_MAX_S,
     WA_LIMITE_DIARIO,
     COOLDOWN_WA_DAYS,
 )
-from utils.phone import extraer_numeros_whatsapp
-from utils.browser import CHROMIUM_ARGS, apply_stealth
-from db_manager import get_connection
+from jobbot.utils.phone import extraer_numeros_whatsapp
+from jobbot.utils.browser import CHROMIUM_ARGS, apply_stealth
+from jobbot.db.manager import get_connection
 
 logger = logging.getLogger("jobbot.wa_sender")
 
@@ -284,7 +284,7 @@ async def _esperar_autenticacion(
         _set_qr_data(estado, "")
         if estado is not None:
             try:
-                with estado._lock
+                with estado._lock:
                     estado.fase_actual = "WA Auth: QR abierto — esperando escaneo…"
             except AttributeError:
                 pass

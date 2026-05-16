@@ -21,121 +21,18 @@ from typing import Optional
 from dotenv import load_dotenv
 load_dotenv()
 
-from config import SENDER_NAME, SMTP_JITTER_MIN_S, SMTP_JITTER_MAX_S
-from utils.cv_builder import compilar_cv_dinamico, CVCompilationError
-from db_manager import (
+from jobbot.config import SENDER_NAME, SMTP_JITTER_MIN_S, SMTP_JITTER_MAX_S
+from jobbot.cv.builder import compilar_cv_dinamico, CVCompilationError
+from jobbot.db.manager import (
     esta_en_cooldown,
+    get_asuntos_usados_by_empresa,
     get_contactos_by_empresa,
     get_empresas_listas_para_envio,
     registrar_envio,
 )
+from jobbot.outreach.templates import ASUNTOS, CUERPOS, FIRMA_TEMPLATE
 
 logger = logging.getLogger("jobbot.mailer")
-
-# ---------------------------------------------------------------------------
-# Constantes de contenido
-# ---------------------------------------------------------------------------
-
-ASUNTOS: tuple[str, ...] = (
-    "Búsqueda laboral — Administración con perfil IT | {nombre_empresa}",
-    "Postulación espontánea: Gestión administrativa y soporte técnico",
-    "Candidatura — Perfil híbrido Admin/IT para {nombre_empresa}",
-    "Interés en sumarme al equipo de {nombre_empresa}",
-    "Postulación: Secretariado técnico y soporte de sistemas",
-    "CV adjunto — Administración IT | Disponibilidad inmediata",
-    "{nombre_empresa} — Candidatura espontánea, perfil admin-técnico",
-)
-
-CUERPOS: tuple[str, ...] = (
-    """\
-Buenos días,
-
-Mi nombre es {nombre_remitente} y me comunico para dejar mi candidatura espontánea \
-en {nombre_empresa}.
-
-Mi perfil combina administración de oficina con conocimientos técnicos en soporte IT, \
-lo que me permite no solo gestionar tareas operativas y de secretariado, sino también \
-resolver incidencias de sistemas, administrar accesos y documentar procesos internos \
-de forma autónoma.
-
-Adjunto mi CV para que puedan evaluarlo con detenimiento. Quedo a disposición ante \
-cualquier consulta.
-
-{firma}""",
-
-    """\
-Hola,
-
-Les escribo desde Mar del Plata para compartir mi perfil con {nombre_empresa}.
-
-Cuento con experiencia en gestión administrativa, atención a proveedores y clientes, \
-manejo de herramientas de oficina y un fuerte componente técnico: soporte de primer \
-nivel, scripting para automatizar tareas repetitivas y administración básica de redes.
-
-Es un perfil que suele ser difícil de encontrar en el mercado local, por lo que me \
-pareció interesante acercarles mi CV directamente.
-
-Muchas gracias por su tiempo.
-
-{firma}""",
-
-    """\
-Estimado equipo de {nombre_empresa}:
-
-Me dirijo a ustedes para postularme de forma espontánea. Soy técnica administrativa \
-con orientación IT, radicada en Mar del Plata y con disponibilidad inmediata.
-
-Entre mis habilidades principales se encuentran: organización de documentación y \
-archivos, coordinación de agenda, soporte técnico a usuarios, mantenimiento preventivo \
-de equipos y automatización de reportes con Python y scripts de shell.
-
-Adjunto mi CV en formato PDF. Estoy disponible para una entrevista en el horario \
-que mejor les convenga.
-
-Saludos cordiales,
-
-{firma}""",
-
-    """\
-Buenas tardes,
-
-Mi nombre es {nombre_remitente}. Encontré información sobre {nombre_empresa} y me \
-resultó interesante la posibilidad de sumarme al equipo.
-
-Tengo experiencia cubriendo roles que históricamente se dividen en dos personas: \
-el administrativo y el de soporte técnico. Puedo redactar informes, coordinar con \
-proveedores y al mismo tiempo diagnosticar una falla de red o automatizar una tarea \
-con un script. Para una PyME, eso representa eficiencia real.
-
-Si les parece relevante el perfil, con gusto ampliamos información.
-
-{firma}""",
-
-    """\
-Hola equipo de {nombre_empresa},
-
-Les escribo para dejar mi CV ante la posibilidad de que necesiten reforzar el área \
-administrativa o de soporte técnico.
-
-Soy una persona con perfil híbrido: manejo fluido de herramientas ofimáticas, \
-redacción de comunicaciones formales, gestión de facturación y a la vez conocimientos \
-de redes, sistemas operativos y automatización de procesos. Resido en Mar del Plata \
-y tengo disponibilidad completa.
-
-Adjunto mi currículum. Muchas gracias por considerar mi postulación.
-
-{firma}""",
-)
-
-FIRMA_TEMPLATE: str = """\
-{nombre_remitente}
-Mar del Plata, Buenos Aires
-Email: {email_remitente}
-Web: {github_user}.github.io/  |  linkedin.com/in/{linkedin_user}
-
-PD: Este correo y su adjunto fueron generados con JobBot, \
-una herramienta de automatización de búsqueda laboral que desarrollé en Python. \
-Podés ver el código en: github.com/{github_user}/jobbot"""
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +56,6 @@ class ConfigSMTP:
         if missing:
             raise EnvironmentError(
                 f"Variables de entorno faltantes: {', '.join(missing)}. "
-                "Configuralas en start_bot.sh antes de ejecutar el bot."
                 "Configuralas en el archivo .env antes de ejecutar el bot."
             )
         return cls(
@@ -195,36 +91,45 @@ def _derivar_keywords(perfil_cv: str, rubro: Optional[str]) -> list[str]:
     de CV y el rubro de la empresa, sin requerir datos adicionales en la DB.
 
     La lógica es intencional e independiente del módulo de scoring:
-    mailer.py conoce el perfil final (CV_Tech / CV_Admin_IT) y el rubro
+    mailer.py conoce el perfil final (CV_Tech / CV_Admin_IT / CV_Hybrid) y el rubro
     detectado — con eso alcanza para personalizar el CV en forma útil.
 
     Args:
-        perfil_cv: 'CV_Tech' | 'CV_Admin_IT'
+        perfil_cv: 'CV_Tech' | 'CV_Admin_IT' | 'CV_Hybrid'
         rubro:     Sector detectado durante el scraping (puede ser None).
 
     Returns:
         Lista de keywords ordenadas por relevancia para ese rubro.
     """
-    # Bases por perfil
     base_tech = [
-        "Python", "Linux", "Redes TCP/IP", "Soporte IT",
-        "Git", "Scripting Bash", "Administración de sistemas", "Docker",
+        "Go/Fiber", "PostgreSQL", "SvelteKit", "TypeScript",
+        "Rust/Tauri", "Linux", "Pentesting", "APIs REST",
     ]
     base_admin = [
-        "Microsoft 365", "Gestión documental", "Facturación AFIP",
-        "Atención al cliente", "Tango Gestión", "Soporte IT",
-        "Automatización de procesos", "Administración",
+        "Facturación AFIP", "POS Morphi", "Control de stock",
+        "Microsoft 365", "Excel avanzado", "Soporte IT",
+        "Windows Server/GPO", "Gestión documental",
+    ]
+    base_hybrid = [
+        "Operaciones IT", "Python automation", "Soporte técnico",
+        "Redes TCP/IP", "Linux/Windows", "Hardening",
+        "Documentación", "Mejora de procesos",
     ]
 
-    keywords = base_tech if perfil_cv == "CV_Tech" else base_admin
+    if perfil_cv == "CV_Tech":
+        keywords = base_tech
+    elif perfil_cv == "CV_Hybrid":
+        keywords = base_hybrid
+    else:
+        keywords = base_admin
 
     # Enriquecimiento por rubro — sobrescribe la base con keywords más específicas
     if rubro:
         r = rubro.lower()
         if any(t in r for t in ("software", "sistemas", "saas", "devops", "dev", "qa")):
             keywords = [
-                "Python", "QA / Testing", "Git", "APIs REST",
-                "Linux", "CI/CD", "Soporte IT", "Scripting",
+                "Go/Fiber", "PostgreSQL", "SvelteKit", "APIs REST",
+                "Linux", "CI/CD", "Pentesting", "Cloudflare",
             ]
         elif any(t in r for t in ("clínica", "salud", "médico", "laboratorio", "sanatorio")):
             keywords = [
@@ -246,11 +151,35 @@ def _derivar_keywords(perfil_cv: str, rubro: Optional[str]) -> list[str]:
             ]
         elif any(t in r for t in ("logística", "transporte", "distribuidora")):
             keywords = [
-                "Gestión de flota", "Excel avanzado", "Soporte IT",
-                "Administración", "Tracking de envíos", "Facturación",
+                "Operaciones IT", "Excel avanzado", "Soporte técnico",
+                "Automatización Python", "Tracking de envíos", "Redes TCP/IP",
+            ]
+        elif any(t in r for t in ("manufactura", "industrial", "planta", "consultora")):
+            keywords = [
+                "Infraestructura IT", "Automatización de procesos",
+                "Documentación técnica", "Soporte a usuarios",
+                "Linux/Windows", "Stock e inventario", "Python",
             ]
 
     return keywords
+
+
+def _seleccionar_indice_template(
+    nombre_empresa: str,
+    asuntos_usados: set[str],
+) -> int:
+    candidatos: list[int] = []
+    for idx, asunto_template in enumerate(ASUNTOS):
+        asunto_renderizado = _render_template(
+            asunto_template,
+            nombre_empresa=nombre_empresa,
+        )
+        if asunto_renderizado not in asuntos_usados:
+            candidatos.append(idx)
+
+    if not candidatos:
+        candidatos = list(range(len(ASUNTOS)))
+    return random.choice(candidatos)
 
 
 def _enviar_via_smtp(config: ConfigSMTP, msg: EmailMessage) -> bool:
@@ -315,7 +244,7 @@ async def _preparar_adjunto_dinamico(
         nombre_empresa, perfil_cv, ", ".join(keywords),
     )
 
-    pdf_bytes = await compilar_cv_dinamico(nombre_empresa, keywords)
+    pdf_bytes = await compilar_cv_dinamico(nombre_empresa, keywords, perfil_cv=perfil_cv)
 
     # Nombre de archivo limpio y descriptivo
     nombre_limpio = re.sub(r'[^\w\s-]', '', nombre_empresa).strip().replace(' ', '_')
@@ -351,6 +280,7 @@ async def _construir_email(
     nombre_empresa: str,
     perfil_cv: str,
     rubro: Optional[str],
+    asuntos_usados: set[str],
 ) -> tuple[EmailMessage, str]:
     """
     Construye el EmailMessage completo con cuerpo y CV adjunto.
@@ -375,12 +305,13 @@ async def _construir_email(
         linkedin_user=config.linkedin_user,
     )
 
+    template_idx = _seleccionar_indice_template(nombre_empresa, asuntos_usados)
     asunto = _render_template(
-        random.choice(ASUNTOS),
+        ASUNTOS[template_idx],
         nombre_empresa=nombre_empresa,
     )
     cuerpo = _render_template(
-        random.choice(CUERPOS),
+        CUERPOS[template_idx % len(CUERPOS)],
         nombre_remitente=config.sender_name,
         nombre_empresa=nombre_empresa,
         firma=firma,
@@ -493,11 +424,15 @@ async def procesar_envios_pendientes(
             continue
 
         destinatario = contacto_obj["email_o_link"]
+        asuntos_usados = await asyncio.to_thread(
+            get_asuntos_usados_by_empresa,
+            empresa_id,
+        )
 
         # Construir email con CV dinámico (compilación Typst en subproceso)
         try:
             msg, asunto_usado = await _construir_email(
-                config, destinatario, nombre, perfil_cv, rubro,
+                config, destinatario, nombre, perfil_cv, rubro, asuntos_usados,
             )
         except CVCompilationError as exc:
             logger.error(

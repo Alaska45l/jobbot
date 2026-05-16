@@ -26,15 +26,15 @@ from playwright.async_api import (
     Error as PlaywrightError,
 )
 
-from scoring import analizar_empresa, ResultadoScoring
-from db_manager import (
+from jobbot.scoring.engine import analizar_empresa, ResultadoScoring
+from jobbot.db.manager import (
     init_db,
     upsert_empresa,
     insert_contacto,
     get_empresa_by_dominio,
     get_connection,
 )
-from utils.browser import apply_stealth
+from jobbot.utils.browser import apply_stealth
 
 logger = logging.getLogger("jobbot.scraper")
 
@@ -54,7 +54,6 @@ CHROMIUM_ARGS = [
     "--disable-dev-shm-usage",
     "--disable-features=IsolateOrigins,site-per-process",
     "--lang=es-AR,es;q=0.9",
-    "--disable-dev-shm-usage",
     "--disable-gpu",
 ]
 

@@ -239,11 +239,18 @@ _STYLE_BOT   = "#000000 on #ffffff"
 
 
 @lru_cache(maxsize=1)
-def _qr_panel(qr_data: str) -> Panel:
+def _qr_panel(
+    qr_data: str,
+    terminal_cols: int | None = None,
+    terminal_rows: int | None = None,
+) -> Panel:
     """
     Renderiza el QR forzando el Modo Compacto (Half-Blocks) y nivel L
     para garantizar que entre verticalmente en pantallas de notebooks.
     Conserva los colores absolutos para ser inmune a los temas.
+
+    `terminal_cols` y `terminal_rows` participan en la clave de cache para
+    regenerar el panel si el usuario redimensiona la terminal.
     """
     qr = qrcode.QRCode(
         version=None,

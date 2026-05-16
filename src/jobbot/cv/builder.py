@@ -15,13 +15,17 @@ import tempfile
 from pathlib import Path
 from typing import Final
 
+from jobbot.cv.profiles import CERTIFICATIONS, CONTACT, EDUCATION, get_profile
+
 logger = logging.getLogger("jobbot.cv_builder")
 
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
 
-TEMPLATE_PATH: Final[Path] = Path(__file__).parent.parent / "cvs" / "template.typ"
+PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
+TEMPLATE_DIR: Final[Path] = Path(__file__).parent / "templates"
+LEGACY_TEMPLATE_PATH: Final[Path] = PROJECT_ROOT / "cvs" / "template.typ"
 
 # Marcadores textuales que deben existir en la plantilla Typst.
 # Se reemplazan con str.replace() — simple y determinista.
@@ -104,6 +108,31 @@ def _formatear_keywords_typst(keywords: list[str]) -> str:
     return ", ".join(f'"{kw}"' for kw in escapadas)
 
 
+def _escape_typst_text(value: str) -> str:
+    replacements = {
+        "\\": "\\\\",
+        "#": "\\#",
+        "[": "\\[",
+        "]": "\\]",
+        "$": "\\$",
+    }
+    escaped = value
+    for original, replacement in replacements.items():
+        escaped = escaped.replace(original, replacement)
+    return escaped
+
+
+def _format_bullets(items: tuple[str, ...]) -> str:
+    return "\n".join(f"- {_escape_typst_text(item)}" for item in items)
+
+
+def _render_markers(template_raw: str, values: dict[str, str]) -> str:
+    rendered = template_raw
+    for key, value in values.items():
+        rendered = rendered.replace("{{ " + key + " }}", value)
+    return rendered
+
+
 # ---------------------------------------------------------------------------
 # API pública
 # ---------------------------------------------------------------------------
@@ -111,15 +140,21 @@ def _formatear_keywords_typst(keywords: list[str]) -> str:
 async def compilar_cv_dinamico(
     nombre_empresa: str,
     keywords: list[str],
+    perfil_cv: str = "CV_Admin_IT",
 ) -> bytes:
 
     await _verificar_typst()
 
+    profile = get_profile(perfil_cv)
+    template_path = TEMPLATE_DIR / profile.template_file
+    if not template_path.exists():
+        template_path = LEGACY_TEMPLATE_PATH
+
     # Verificación temprana de la plantilla — falla rápido con mensaje claro
-    if not TEMPLATE_PATH.exists():
+    if not template_path.exists():
         raise FileNotFoundError(
-            f"Plantilla Typst no encontrada: {TEMPLATE_PATH}\n"
-            "Asegurate de que 'cvs/template.typ' existe en la raíz del proyecto."
+            f"Plantilla Typst no encontrada: {template_path}\n"
+            "Asegurate de que exista en src/jobbot/cv/templates/."
         )
 
     # Selección de keywords efectivas
@@ -127,8 +162,9 @@ async def compilar_cv_dinamico(
     kw_typst: str = _formatear_keywords_typst(kw_efectivas)
 
     logger.debug(
-        "Iniciando compilación CV | empresa='%s' | keywords=%d [%s]",
+        "Iniciando compilación CV | empresa='%s' | perfil=%s | keywords=%d [%s]",
         nombre_empresa,
+        profile.code,
         len(kw_efectivas),
         ", ".join(kw_efectivas[:3]) + ("…" if len(kw_efectivas) > 3 else ""),
     )
@@ -136,12 +172,26 @@ async def compilar_cv_dinamico(
     # Inyección de variables en la plantilla
     # Usamos str.replace() — determinista, sin regex, sin librerías de templating.
     template_raw: str = await asyncio.to_thread(
-        TEMPLATE_PATH.read_text, "utf-8"
+        template_path.read_text, "utf-8"
     )
-    template_renderizado: str = (
-        template_raw
-        .replace(_MARKER_EMPRESA,  nombre_empresa)
-        .replace(_MARKER_KEYWORDS, kw_typst)
+    template_renderizado: str = _render_markers(
+        template_raw,
+        {
+            "EMPRESA": _escape_typst_text(nombre_empresa),
+            "KEYWORDS": kw_typst,
+            "NOMBRE": _escape_typst_text(CONTACT["nombre"]),
+            "TITULO": _escape_typst_text(profile.title),
+            "UBICACION": _escape_typst_text(CONTACT["ubicacion"]),
+            "EMAIL": _escape_typst_text(CONTACT["email"]),
+            "LINKEDIN": _escape_typst_text(CONTACT["linkedin"]),
+            "PORTFOLIO": _escape_typst_text(CONTACT["portfolio"]),
+            "GITHUB": _escape_typst_text(CONTACT["github"]),
+            "SUMMARY": _escape_typst_text(profile.summary),
+            "EXPERIENCE": _format_bullets(profile.experience),
+            "SKILLS": _format_bullets(profile.skills),
+            "EDUCATION": _format_bullets(EDUCATION),
+            "CERTIFICATIONS": _format_bullets(CERTIFICATIONS),
+        },
     )
 
     # Validación superficial: advertir si quedó algún marcador sin reemplazar
@@ -159,7 +209,7 @@ async def compilar_cv_dinamico(
         pdf_out  = tmp / "cv.pdf"
 
         # --- NUEVO: Copiar la imagen de perfil al directorio temporal ---
-        img_src = TEMPLATE_PATH.parent / "perfil.jpg"
+        img_src = PROJECT_ROOT / "cvs" / "perfil.jpg"
         if img_src.exists():
             shutil.copy(img_src, tmp / "perfil.jpg")
         # ----------------------------------------------------------------
@@ -213,8 +263,8 @@ async def compilar_cv_dinamico(
         pdf_bytes: bytes = await asyncio.to_thread(pdf_out.read_bytes)
 
     logger.info(
-        "CV compilado exitosamente | empresa='%s' | size=%d bytes | keywords=[%s]",
-        nombre_empresa,
+        "CV compilado exitosamente | empresa='%s' | perfil=%s | size=%d bytes | keywords=[%s]",
+        nombre_empresa, profile.code,
         len(pdf_bytes),
         ", ".join(kw_efectivas),
     )

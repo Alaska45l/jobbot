@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jobbot"
+version = "2.6.0"
+description = "OSINT, scraping and outreach automation for deterministic job lead discovery."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiofiles",
+    "ddgs",
+    "playwright",
+    "python-dotenv",
+    "qrcode",
+    "rich",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+jobbot = "jobbot.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+jobbot = ["utils/stealth.min.js", "cv/templates/*.typ"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+

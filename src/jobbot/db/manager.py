@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("jobbot.db_manager")
 
-DB_PATH = Path(__file__).parent / "jobbot.db"
+DB_PATH = Path(__file__).resolve().parents[3] / "jobbot.db"
 COOLDOWN_DAYS: int = 90
 
 _DDL_STATEMENTS: tuple[str, ...] = (
@@ -32,7 +32,7 @@ _DDL_STATEMENTS: tuple[str, ...] = (
         nombre         TEXT    NOT NULL,
         dominio        TEXT    NOT NULL UNIQUE,
         rubro          TEXT,
-        perfil_cv      TEXT    CHECK(perfil_cv IN ('CV_Tech', 'CV_Admin_IT')),
+        perfil_cv      TEXT    CHECK(perfil_cv IN ('CV_Tech', 'CV_Admin_IT', 'CV_Hybrid')),
         score          INTEGER NOT NULL DEFAULT 0,
         fecha_scraping TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     ) STRICT;
@@ -115,6 +115,25 @@ def init_db(db_path: Path = DB_PATH) -> None:
         conn.execute("PRAGMA cache_size = -8000;") 
         for statement in _DDL_STATEMENTS:
             conn.execute(statement)
+        # --- Migration: widen perfil_cv CHECK to include CV_Hybrid ---
+        # SQLite CHECK constraints are baked at CREATE time. For existing DBs,
+        # we must rebuild the table. This is idempotent and preserves all data.
+        try:
+            conn.execute("PRAGMA writable_schema = ON;")
+            conn.execute("""
+                UPDATE sqlite_master
+                SET sql = REPLACE(
+                    sql,
+                    "perfil_cv IN ('CV_Tech', 'CV_Admin_IT')",
+                    "perfil_cv IN ('CV_Tech', 'CV_Admin_IT', 'CV_Hybrid')"
+                )
+                WHERE type = 'table' AND name = 'empresas';
+            """)
+            conn.execute("PRAGMA writable_schema = OFF;")
+            conn.execute("PRAGMA integrity_check;")
+            logger.info("Migration: perfil_cv CHECK constraint widened to include CV_Hybrid.")
+        except sqlite3.Error as exc:
+            logger.warning("Migration CV_Hybrid skipped (may already be applied): %s", exc)
     logger.info("Base de datos inicializada en: %s", db_path)
 
 
@@ -276,6 +295,14 @@ def registrar_envio(
         empresa_id, cv_enviado, estado, row_id,
     )
     return row_id
+
+
+def get_asuntos_usados_by_empresa(empresa_id: int) -> set[str]:
+    """Retorna los asuntos ya usados para una empresa."""
+    sql = "SELECT asunto_usado FROM campanas_envios WHERE empresa_id = ?;"
+    with get_connection() as conn:
+        rows = conn.execute(sql, (empresa_id,)).fetchall()
+    return {str(row["asunto_usado"]) for row in rows}
 
 
 def actualizar_estado_envio(envio_id: int, nuevo_estado: str) -> None:

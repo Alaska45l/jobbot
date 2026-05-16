@@ -1,5 +1,5 @@
 """
-main.py — JobBot Orchestrator v2.6
+jobbot.core.orchestrator — JobBot Orchestrator v2.6
 Modelo Productor-Consumidor con asyncio.Queue.
 
 Correcciones v2.6 vs v2.5:
@@ -38,18 +38,17 @@ from typing import Optional, TypeAlias
 from dotenv import load_dotenv
 load_dotenv()
 
-from rich.console import Console
 from rich.live import Live
 
-from jobbot_tui import BotState, bot_state_from_phase, generate_dashboard
+from jobbot.tui.dashboard import BotState, bot_state_from_phase, generate_dashboard
 
-from db_manager import (
+from jobbot.db.manager import (
     get_connection,
     get_empresas_ordenadas_por_score,
     init_db,
     upsert_empresa,
 )
-from mailer import procesar_envios_pendientes
+from jobbot.outreach.mailer import procesar_envios_pendientes
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tunables
@@ -465,96 +464,102 @@ async def _productor_dork(
     que causaba el deadlock: el Productor ya no puede llenar la cola antes de
     que el Consumidor esté escuchando.
     """
-    logger_fn            = logging.getLogger("jobbot.dork")
+    logger_fn             = logging.getLogger("jobbot.dork")
     errores_429_seguidos = 0
-    insertados_total     = 0
+    insertados_total      = 0
+    enviar_sentinel       = False
 
-    # ── Punto de sincronización: esperar al Consumidor ────────────────────────
-    estado.fase_actual = "Esperando inicialización del browser Chromium…"
-    logger_fn.info("Productor: esperando señal 'consumer_ready'…")
-    await consumer_ready.wait()
+    try:
+        # ── Punto de sincronización: esperar al Consumidor ────────────────────
+        estado.fase_actual = "Esperando inicialización del browser Chromium…"
+        logger_fn.info("Productor: esperando señal 'consumer_ready'…")
+        await consumer_ready.wait()
+        enviar_sentinel = True
 
-    # Si el Consumidor falló durante el launch, el event igual se setea (para
-    # desbloquear a este productor) pero la tarea consumidor ya estará en error.
-    # El gather en pipeline_dork_scrape lo detectará y cancelará al productor.
-    if consumer_ready.is_set():
-        logger_fn.info("Productor: Consumidor listo. Iniciando dorking.")
+        # Si el Consumidor falló durante el launch, el event igual se setea (para
+        # desbloquear a este productor) pero la tarea consumidor ya estará en error.
+        # El gather en pipeline_dork_scrape lo detectará y cancelará al productor.
+        if consumer_ready.is_set():
+            logger_fn.info("Productor: Consumidor listo. Iniciando dorking.")
 
-    for idx, rubro in enumerate(rubros, start=1):
-        query = _construir_query_dork(rubro, zona="")
-        logger_fn.info(
-            "Dorking [%d/%d] | rubro=%s",
-            idx, len(rubros), rubro,
-        )
-        estado.fase_actual = f"Dorking [{idx}/{len(rubros)}]: {rubro}…"
-        with estado._lock:
-            estado.target = rubro
-
-        try:
-            resultados = await _ddgs_con_retry(query, limite_dork)
-            errores_429_seguidos = 0
-        except asyncio.CancelledError:
-            logger_fn.info("Productor cancelado durante dorking.")
-            raise
-        except Exception as exc:
-            errores_429_seguidos += 1
-            logger_fn.warning(
-                "DDGS fallo definitivo | rubro='%s' | %s: %s | 429_consec=%d",
-                rubro, type(exc).__name__, str(exc)[:120], errores_429_seguidos,
+        for idx, rubro in enumerate(rubros, start=1):
+            query = _construir_query_dork(rubro, zona="")
+            logger_fn.info(
+                "Dorking [%d/%d] | rubro=%s",
+                idx, len(rubros), rubro,
             )
-            if errores_429_seguidos >= _PRODUCER_429_THRESHOLD:
-                logger_fn.warning(
-                    "=== COOL-OFF PRODUCTOR: %d errores 429. "
-                    "Durmiendo %.0f min. El Scraper sigue activo. ===",
-                    errores_429_seguidos, _PRODUCER_COOLOFF_S / 60,
-                )
-                estado.fase_actual = (
-                    f"Productor cool-off {_PRODUCER_COOLOFF_S / 60:.0f} min "
-                    f"(429 × {errores_429_seguidos}) — Scraper activo."
-                )
-                await asyncio.sleep(_PRODUCER_COOLOFF_S)
-                errores_429_seguidos = 0
-                logger_fn.info("Productor retomando tras cool-off.")
-            await asyncio.sleep(random.uniform(3.5, 7.5))
-            continue
+            estado.fase_actual = f"Dorking [{idx}/{len(rubros)}]: {rubro}…"
+            with estado._lock:
+                estado.target = rubro
 
-        for r in resultados:
-            url = r.get("href", "")
-            if not url:
-                continue
-            dominio = _extraer_dominio_limpio(url)
-            if not dominio or _es_portal_excluido(dominio):
-                continue
-            titulo = ((r.get("title") or dominio).split(" - ")[0].strip()[:100])
             try:
-                await asyncio.to_thread(
-                    upsert_empresa,
-                    nombre=titulo, dominio=dominio,
-                    rubro=rubro, score=0, es_seed=True,
-                )
-                insertados_total += 1
-                logger_fn.info("Semilla | %s | %s", dominio, rubro)
-                estado.upsert_scraping_row(dominio, 0, "–", "Semilla")
-                with estado._lock:
-                    estado.scraping_total += 1
-
-                await cola.put(dominio)
-
+                resultados = await _ddgs_con_retry(query, limite_dork)
+                errores_429_seguidos = 0
             except asyncio.CancelledError:
+                logger_fn.info("Productor cancelado durante dorking.")
                 raise
             except Exception as exc:
-                logger_fn.error(
-                    "Fallo semilla | %s | %s: %s",
-                    dominio, type(exc).__name__, str(exc)[:80],
+                errores_429_seguidos += 1
+                logger_fn.warning(
+                    "DDGS fallo definitivo | rubro='%s' | %s: %s | 429_consec=%d",
+                    rubro, type(exc).__name__, str(exc)[:120], errores_429_seguidos,
                 )
+                if errores_429_seguidos >= _PRODUCER_429_THRESHOLD:
+                    logger_fn.warning(
+                        "=== COOL-OFF PRODUCTOR: %d errores 429. "
+                        "Durmiendo %.0f min. El Scraper sigue activo. ===",
+                        errores_429_seguidos, _PRODUCER_COOLOFF_S / 60,
+                    )
+                    estado.fase_actual = (
+                        f"Productor cool-off {_PRODUCER_COOLOFF_S / 60:.0f} min "
+                        f"(429 × {errores_429_seguidos}) — Scraper activo."
+                    )
+                    await asyncio.sleep(_PRODUCER_COOLOFF_S)
+                    errores_429_seguidos = 0
+                    logger_fn.info("Productor retomando tras cool-off.")
+                await asyncio.sleep(random.uniform(3.5, 7.5))
+                continue
 
-        await asyncio.sleep(random.uniform(3.5, 7.5))
+            for r in resultados:
+                url = r.get("href", "")
+                if not url:
+                    continue
+                dominio = _extraer_dominio_limpio(url)
+                if not dominio or _es_portal_excluido(dominio):
+                    continue
+                titulo = ((r.get("title") or dominio).split(" - ")[0].strip()[:100])
+                try:
+                    await asyncio.to_thread(
+                        upsert_empresa,
+                        nombre=titulo, dominio=dominio,
+                        rubro=rubro, score=0, es_seed=True,
+                    )
+                    insertados_total += 1
+                    logger_fn.info("Semilla | %s | %s", dominio, rubro)
+                    estado.upsert_scraping_row(dominio, 0, "–", "Semilla")
+                    with estado._lock:
+                        estado.scraping_total += 1
 
-    logger_fn.info(
-        "Productor finalizado | semillas=%d | cola_size=%d",
-        insertados_total, cola.qsize(),
-    )
-    await cola.put(_QUEUE_SENTINEL)
+                    await cola.put(dominio)
+
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger_fn.error(
+                        "Fallo semilla | %s | %s: %s",
+                        dominio, type(exc).__name__, str(exc)[:80],
+                    )
+
+            await asyncio.sleep(random.uniform(3.5, 7.5))
+
+        logger_fn.info(
+            "Productor finalizado | semillas=%d | cola_size=%d",
+            insertados_total, cola.qsize(),
+        )
+    finally:
+        if enviar_sentinel and not asyncio.current_task().cancelling():
+            await cola.put(_QUEUE_SENTINEL)
+            logger_fn.info("Productor: SENTINEL enviado | cola_size=%d", cola.qsize())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -573,13 +578,12 @@ async def _consumidor_scrape(
     listo, y procesa items de la cola con concurrencia limitada por semáforo.
 
     Gestión de tareas en vuelo:
-      - `tareas` es un set que se muta en lugar de reasignarse, para que los
-        callbacks y las referencias externas siempre apunten al mismo objeto.
+      - `tareas` es un set con un único dueño: este loop del consumidor.
       - La recolección de tareas completadas usa _recolectar_terminadas() y
         _esperar_una_terminada(), que verifican t.cancelled() antes de llamar
         t.exception(), evitando el CancelledError fantasma.
     """
-    from scraper import procesar_dominio, CHROMIUM_ARGS
+    from jobbot.scraper.engine import procesar_dominio, CHROMIUM_ARGS
     from playwright.async_api import async_playwright
 
     logger_fn      = logging.getLogger("jobbot.scraper")
@@ -716,9 +720,6 @@ async def _consumidor_scrape(
 
                 tarea = asyncio.create_task(_scrape_uno(dominio), name=f"scrape-{dominio}")
                 tareas.add(tarea)
-                # Callback que limpia el set cuando la tarea termina
-                # naturalmente (no en cancelación ni en reasignación).
-                tarea.add_done_callback(tareas.discard)
 
                 # ── Back-pressure ─────────────────────────────────────────────
                 # Si tenemos demasiadas tareas en vuelo, esperar a que alguna
@@ -1106,51 +1107,6 @@ async def pipeline_auto(args: argparse.Namespace, estado: EstadoBot) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="python main.py",
-        description=(
-            "JobBot v2.6 — OSINT, scraping Productor-Consumidor y cold email."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Ejemplos:\n"
-            "  python main.py --dork\n"
-            "  python main.py --scrape --concurrencia 2\n"
-            "  python main.py --dork-scrape --concurrencia 2\n"
-            "  python main.py --mail --min-score 60 --dry-run\n"
-            "  python main.py --auto\n"
-        ),
-    )
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--dork",        action="store_true",
-                      help="Solo dorking (semillas a DB, sin scraping)")
-    mode.add_argument("--scrape",      action="store_true",
-                      help="Solo scraping (dominios desde DB)")
-    mode.add_argument("--dork-scrape", action="store_true", dest="dork_scrape",
-                      help="Dork+Scrape en paralelo (Productor-Consumidor)")
-    mode.add_argument("--mail",        action="store_true")
-    mode.add_argument("--auto",        action="store_true")
-    mode.add_argument("--wa",          action="store_true")
-
-    parser.add_argument("--rubros-file",  type=str, default=None,
-                        dest="rubros_file", metavar="FILE")
-    parser.add_argument("--limite-dork",  type=int, default=30, dest="limite_dork")
-    parser.add_argument("--concurrencia", type=int, default=2,
-                        help=f"Instancias Playwright (máx {MAX_PLAYWRIGHT} por RAM)")
-    parser.add_argument("--min-score",    type=int, default=55, dest="min_score")
-    parser.add_argument("--dry-run",      action="store_true",  dest="dry_run")
-    parser.add_argument("--limite",       type=int, default=10)
-    parser.add_argument("--headless",     action="store_true")
-    parser.add_argument("--forzar-rescraping", action="store_true",
-                        dest="forzar_rescraping")
-    return parser
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Async entry point
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1256,39 +1212,3 @@ async def _async_main(args: argparse.Namespace) -> None:
                 )
             except Exception:
                 pass
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Synchronous entry point
-# ─────────────────────────────────────────────────────────────────────────────
-
-def main() -> None:
-    parser = _build_parser()
-    args   = parser.parse_args()
-
-    if args.dry_run and not (args.mail or args.auto or args.wa):
-        parser.error("--dry-run solo tiene efecto con --mail, --wa o --auto")
-    if not (1 <= args.concurrencia <= 10):
-        parser.error("--concurrencia debe estar entre 1 y 10")
-
-    err = Console(stderr=True)
-    try:
-        asyncio.run(_async_main(args))
-    except KeyboardInterrupt:
-        err.print(
-            "\n[bold yellow]Interrumpido. DB consistente (WAL). "
-            "No quedan procesos Chromium huérfanos.[/bold yellow]"
-        )
-    except EnvironmentError as exc:
-        err.print(f"\n[bold red]Error de configuración:[/bold red] {exc}")
-        raise SystemExit(1)
-    except ImportError as exc:
-        err.print(f"\n[bold red]Dependencia faltante:[/bold red] {exc}")
-        raise SystemExit(1)
-    except Exception as exc:
-        err.print(f"\n[bold red]Error fatal:[/bold red] {exc}")
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>JobBot v2.4</h1>
+  <h1>JobBot v2.6</h1>
   <p><strong>Automated OSINT, Stealth Scraping & Dynamic Pipeline for Targeted Job Searching</strong></p>
 
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
@@ -22,7 +22,7 @@ Por eso construí JobBot bajo una filosofía técnica estricta:
 
 * **Determinismo sobre Alucinación:** El bot no utiliza LLMs para tareas de clasificación. Emplea un motor léxico propio en Python puro con expresiones regulares para decidir el score del prospecto sin equivocarse.
 * **Evasión Stealth:** Supera protecciones como Cloudflare o Datadome utilizando `playwright-stealth`, rotación de contextos, spoofing de zona horaria y simulación de biometría humana (movimientos de mouse y scroll aleatorio).
-* **CVs Mutantes (Typst):** En lugar de enviar un PDF genérico, el orquestador lee la web de la empresa e inyecta las *keywords* exactas de la compañía en una plantilla Typst, compilando un PDF único en milisegundos antes de enviarlo.
+* **CVs Mutantes (Typst):** En lugar de enviar un PDF genérico, el orquestador lee la web de la empresa e inyecta las *keywords* exactas de la compañía en plantillas Typst por perfil (`CV_Tech`, `CV_Admin_IT`, `CV_Hybrid`), compilando un PDF único antes de enviarlo.
 * **Daemon 24/7 Resiliente:** Diseñado para correr de fondo en `tmux`. Cuenta con manejo seguro de señales de apagado (`SIGTERM`), timeouts estrictos anti-livelock y pausas aleatorias (Jitter) para evitar baneos de IP o de cuenta SMTP.
 
 ---
@@ -57,20 +57,20 @@ LINKEDIN_USER="TuUsuarioLinkedIn"
 ### 2\. Dependencias Externas del Sistema
 
   * **Typst:** Se requiere el binario de Typst en el `PATH` para la compilación dinámica de CVs (`cargo install typst-cli` o vía su repositorio oficial).
-  * **Plantilla Base:** La plantilla a renderizar debe ubicarse en `cvs/template.typ` (opcional: imagen en `cvs/perfil.jpg`).
+  * **Plantillas CV:** Las plantillas por perfil viven en `src/jobbot/cv/templates/` (opcional: imagen en `cvs/perfil.jpg`).
 
 -----
 
 ## <img src="https://api.iconify.design/material-symbols/terminal.svg?color=%23007acc" width="24" height="24" align="center"> Uso del Pipeline
 
-El sistema se opera mediante el orquestador principal (`main.py`).
+El sistema se opera mediante el paquete CLI (`jobbot` o `python -m jobbot`).
 
 ### Modo Daemon (Recomendado)
 
 Ejecuta el ciclo completo (Dork -\> Scrape -\> Mail) en un loop infinito con manejo de timeouts y descansos anti-ban.
 
 ```bash
-python main.py --auto --concurrencia 3
+jobbot --auto --concurrencia 3
 ```
 
 ### Ejecuciones Manuales (Por Fases)
@@ -78,25 +78,25 @@ python main.py --auto --concurrencia 3
 **Fase 1: Recolección de Semillas (Dorking)**
 
 ```bash
-python main.py --dork --rubros-file rubros.txt --limite-dork 30
+jobbot --dork --rubros-file rubros.txt --limite-dork 30
 ```
 
 **Fase 2: Extracción y Scoring (Scraping)**
 
 ```bash
-python main.py --scrape --concurrencia 3
+jobbot --scrape --concurrencia 3
 ```
 
 **Fase 3: Despacho (Mailing o WhatsApp)**
 
 ```bash
 # Auditoría en terminal (Dry-Run: No acciona envíos reales)
-python main.py --mail --dry-run --min-score 55
-python main.py --wa --dry-run
+jobbot --mail --dry-run --min-score 55
+jobbot --wa --dry-run
 
 # Ejecución real
-python main.py --mail --min-score 55
-python main.py --wa
+jobbot --mail --min-score 55
+jobbot --wa
 ```
 
 -----

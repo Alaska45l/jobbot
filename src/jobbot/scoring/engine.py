@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Final
 
-from utils.phone import extraer_numeros_whatsapp
+from jobbot.utils.phone import extraer_numeros_whatsapp
 
 logger = logging.getLogger("jobbot.scoring")
 
@@ -42,15 +42,31 @@ RUBRO_WEIGHTS: Final[dict[str, dict[str, int | str | list]]] = {
     },
     "admin_it": {
         "keywords": [
-            "inmobiliaria", "logística", "estudio", "clínica", "distribuidora",
-            "administración", "contable", "jurídico", "parque industrial",
-            "constructor", "transporte", "salud", "comercio", "manufactura",
-            "importadora", "exportadora", "agencia", "consultora",
+            "inmobiliaria", "estudio", "clínica", "administración",
+            "contable", "jurídico", "salud", "comercio", "agencia",
+            "consultorio", "laboratorio", "sanatorio", "legal", "escribanía",
+            "propiedades", "real estate", "facturación", "secretaría",
         ],
         "score_bonus": 20,
         "cv":          "CV_Admin_IT",
     },
+    "hybrid": {
+        "keywords": [
+            "logística", "distribuidora", "parque industrial", "constructor",
+            "transporte", "manufactura", "importadora", "exportadora",
+            "consultora", "operaciones", "infraestructura", "mesa de ayuda",
+            "soporte técnico", "departamento de sistemas", "sistemas internos",
+            "automatización", "procesos", "inventario", "stock", "planta",
+            "sucursal", "sucursales", "erp", "wms", "crm",
+        ],
+        "score_bonus": 18,
+        "cv":          "CV_Hybrid",
+    },
 }
+
+HYBRID_TECH_THRESHOLD: Final[int] = 2
+HYBRID_ADMIN_THRESHOLD: Final[int] = 2
+HYBRID_DIRECT_THRESHOLD: Final[int] = 2
 
 # Señales negativas que indican que el dominio NO es un prospecto B2B válido.
 # Diseño de pesos:
@@ -223,6 +239,29 @@ def _contar_keywords(texto: str, keywords: list[str]) -> int:
         1 for kw in keywords
         if re.search(r'\b' + re.escape(kw) + r'\b', texto_lower)
     )
+
+
+def _seleccionar_perfil(keyword_matches: dict[str, int]) -> str:
+    tech_matches = keyword_matches.get("tech", 0)
+    admin_matches = keyword_matches.get("admin_it", 0)
+    hybrid_matches = keyword_matches.get("hybrid", 0)
+
+    if (
+        tech_matches >= HYBRID_TECH_THRESHOLD
+        and admin_matches >= HYBRID_ADMIN_THRESHOLD
+    ):
+        return "hybrid"
+
+    if hybrid_matches >= HYBRID_DIRECT_THRESHOLD and (tech_matches or admin_matches):
+        return "hybrid"
+
+    if hybrid_matches > tech_matches and hybrid_matches > admin_matches:
+        return "hybrid"
+
+    if all(v == 0 for v in keyword_matches.values()):
+        return "admin_it"
+
+    return max(keyword_matches, key=lambda k: keyword_matches[k])
 
 
 def _extraer_meta_description(html: str) -> str:
@@ -401,11 +440,7 @@ def analizar_empresa(
         k: _contar_keywords(texto_plano, v["keywords"])  # type: ignore[arg-type]
         for k, v in RUBRO_WEIGHTS.items()
     }
-    perfil_key = (
-        "admin_it"
-        if all(v == 0 for v in keyword_matches.values())
-        else max(keyword_matches, key=lambda k: keyword_matches[k])
-    )
+    perfil_key = _seleccionar_perfil(keyword_matches)
     perfil_data = RUBRO_WEIGHTS[perfil_key]
     perfil_cv: str = str(perfil_data["cv"])
     score += int(perfil_data["score_bonus"])  # type: ignore[arg-type]

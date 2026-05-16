@@ -1,18 +1,18 @@
-import asyncio
-from utils.cv_builder import compilar_cv_dinamico
+"""CV builder tests."""
 
-async def main():
-    print("Compilando CV de prueba...")
-    
-    pdf_bytes = await compilar_cv_dinamico(
-        nombre_empresa="Tech & Security MdP", 
-        keywords=["Ciberseguridad", "Auditoría de APIs", "Soporte IT", "Python"]
+from jobbot.cv.builder import _formatear_keywords_typst, _render_markers
+from jobbot.cv.profiles import PROFILES
+
+
+def test_formatear_keywords_typst_escapes_quotes() -> None:
+    assert _formatear_keywords_typst(["Python", 'API "REST"']) == (
+        '"Python", "API \\"REST\\""'
     )
-    
-    with open("CV_Prueba_Visual.pdf", "wb") as f:
-        f.write(pdf_bytes)
-        
-    print("¡Listo! Abrí el archivo 'CV_Prueba_Visual.pdf' para ver cómo quedó.")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+
+def test_three_cv_profiles_exist() -> None:
+    assert {"CV_Tech", "CV_Admin_IT", "CV_Hybrid"} <= set(PROFILES)
+
+
+def test_render_markers_replaces_known_values() -> None:
+    assert _render_markers("Hola {{ EMPRESA }}", {"EMPRESA": "Acme"}) == "Hola Acme"

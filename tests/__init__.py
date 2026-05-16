@@ -1,0 +1,2 @@
+"""JobBot tests."""
+

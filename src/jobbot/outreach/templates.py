@@ -1,143 +1,153 @@
-"""Cold outreach templates in Argentine Spanish."""
+"""Email templates for ATICMA direct job application in Argentine Spanish."""
 
 ASUNTOS: tuple[str, ...] = (
-    "Perfil Admin/IT para {nombre_empresa}",
-    "Postulación espontánea | {nombre_empresa}",
-    "CV para futuras búsquedas",
-    "{nombre_empresa} - candidatura espontánea",
-    "Soporte IT y administración",
-    "Interés en sumarme al equipo",
-    "CV adjunto - perfil técnico operativo",
-    "Consulta por oportunidades en {nombre_empresa}",
-    "Perfil híbrido para operaciones e IT",
-    "Presentación profesional - {nombre_empresa}",
-    "Administración, soporte y automatización",
-    "Candidatura desde Mar del Plata",
+    "Postulación - Perfil técnico para {nombre_empresa}",
+    "CV adjunto | Postulación espontánea - {nombre_empresa}",
+    "Postulación directa | {nombre_empresa}",
+    "{nombre_empresa} - Me interesa sumarme al equipo",
+    "Candidatura espontánea | Perfil IT para {nombre_empresa}",
+    "Postulación | Perfil analítico-técnico - {nombre_empresa}",
+    "CV - Postulación para {nombre_empresa}",
+    "Me interesa trabajar en {nombre_empresa}",
+    "Postulación espontánea desde Mar del Plata",
+    "Candidatura | Perfil técnico con experiencia operativa",
+    "Postulación directa para {nombre_empresa}",
+    "{nombre_empresa} - Postulación espontánea con CV adjunto",
 )
 
 CUERPOS: tuple[str, ...] = (
     """\
 Buenos días,
 
-Mi nombre es {nombre_remitente} y me comunico para dejar mi candidatura espontánea \
-en {nombre_empresa}.
+Mi nombre es {nombre_remitente} y me comunico porque estoy interesada en \
+sumarme al equipo de {nombre_empresa}.
 
-Mi perfil combina administración de oficina con conocimientos técnicos en soporte IT, \
-lo que me permite gestionar tareas operativas, resolver incidencias de sistemas, \
-administrar accesos y documentar procesos internos de forma autónoma.
+Mi perfil combina experiencia técnica en desarrollo, QA y soporte IT con \
+capacidad analítica y atención al detalle. Tengo formación en programación, \
+sistemas y ciencias, y me destaco detectando errores, documentando procesos \
+y resolviendo problemas técnicos de forma autónoma.
 
-Adjunto mi CV para que puedan evaluarlo. Quedo a disposición ante cualquier consulta.
+Adjunto mi CV para que puedan evaluarlo. Quedo a disposición para una \
+entrevista o cualquier consulta.
 
 {firma}""",
 
     """\
 Hola,
 
-Soy {nombre_remitente} y les escribo desde Mar del Plata para compartir mi perfil \
-con {nombre_empresa}.
+Soy {nombre_remitente}, de Mar del Plata. Les escribo para postularme \
+de forma directa a {nombre_empresa}.
 
-Cuento con experiencia en gestión administrativa, atención a proveedores y clientes, \
-herramientas de oficina y un fuerte componente técnico: soporte de primer nivel, \
-scripting para automatizar tareas repetitivas y administración básica de redes.
+Cuento con experiencia en soporte IT, desarrollo web, automatización y \
+operaciones. Mi perfil es técnico-analítico: me desenvuelvo bien detectando \
+fallos, ordenando información, documentando procesos y aprendiendo \
+herramientas nuevas rápidamente.
 
-Me pareció útil acercarles mi CV directamente por si el perfil encaja con alguna \
-búsqueda actual o futura.
+Adjunto mi CV en PDF. Estoy disponible para ampliar información.
 
 {firma}""",
 
     """\
 Estimado equipo de {nombre_empresa}:
 
-Soy {nombre_remitente} y me postulo de forma espontánea. Tengo experiencia en \
-administración, operaciones y soporte IT, con disponibilidad para cubrir tareas \
-operativas y técnicas dentro de equipos chicos o medianos.
+Me postulo de forma espontánea para oportunidades actuales o futuras en \
+su equipo. Soy {nombre_remitente} y tengo experiencia en desarrollo de \
+software, soporte técnico, operaciones y documentación.
 
-Adjunto mi CV en PDF. Estoy disponible para una entrevista cuando lo consideren \
-conveniente.
+Mi fortaleza principal es la capacidad de análisis: encuentro dónde se \
+rompe el sistema, documento el problema con claridad y propongo soluciones. \
+Tengo formación en programación, física y medicina.
 
-Saludos cordiales,
+Adjunto CV. Quedo atenta.
 
 {firma}""",
 
     """\
 Buenas tardes,
 
-Mi nombre es {nombre_remitente}. Encontré información sobre {nombre_empresa} y me \
-resultó interesante la posibilidad de sumarme al equipo.
+Soy {nombre_remitente}. Vi que {nombre_empresa} forma parte de la comunidad \
+tecnológica de Mar del Plata y me interesa postularme.
 
-Tengo experiencia cubriendo roles que suelen dividirse entre administración y soporte \
-técnico: puedo redactar informes, coordinar con proveedores, diagnosticar fallas de \
-red y automatizar tareas repetitivas con scripts.
+Mi perfil es técnico con fuerte componente analítico: programación \
+(Go, Python, TypeScript), troubleshooting, QA, seguridad aplicada y \
+documentación técnica. Busco un entorno donde pueda aportar precisión, \
+criterio y resolución de problemas.
 
-Si el perfil les resulta relevante, con gusto ampliamos información.
+Si el perfil resulta relevante, con gusto coordinamos una entrevista.
 
 {firma}""",
 
     """\
 Hola equipo de {nombre_empresa},
 
-Les escribo para dejar mi CV ante la posibilidad de que necesiten reforzar el área \
-administrativa, operativa o de soporte técnico.
+Les escribo para dejar mi candidatura directa. Soy {nombre_remitente} \
+y busco integrarme a un equipo técnico donde mi capacidad de análisis, \
+detección de errores y resolución de problemas tengan aplicación real.
 
-Soy {nombre_remitente}, con manejo de herramientas ofimáticas, facturación, gestión \
-de stock, redes, sistemas operativos y automatización de procesos. Resido en Mar del \
-Plata y puedo adaptarme a equipos administrativos, técnicos o mixtos.
+Tengo experiencia en desarrollo full-stack, soporte IT, operaciones, \
+QA y automatización. Resido en Mar del Plata y puedo adaptarme a \
+modalidad presencial, híbrida o remota.
 
-Gracias por considerar mi postulación.
+Adjunto mi CV para evaluación.
 
 {firma}""",
 
     """\
 Buenos días,
 
-Soy {nombre_remitente}. Les comparto mi CV porque mi experiencia puede ser útil para \
-{nombre_empresa} en tareas donde se cruzan administración, soporte a usuarios y mejora \
-de procesos internos.
+Soy {nombre_remitente} y les acerco mi postulación espontánea a \
+{nombre_empresa}. Mi perfil combina desarrollo de software, soporte \
+técnico, operaciones y pensamiento analítico.
 
-En trabajos anteriores combiné gestión operativa, facturación, control de stock, \
-mantenimiento IT de sucursales y resolución de problemas técnicos cotidianos.
+En experiencias anteriores demostré capacidad para gestionar sistemas, \
+detectar inconsistencias, documentar procesos y resolver problemas \
+técnicos en entornos de presión.
 
-Quedo a disposición.
+Adjunto CV en PDF.
 
 {firma}""",
 
     """\
 Hola,
 
-Me presento: soy {nombre_remitente}, de Mar del Plata. Trabajo con una combinación de \
-software, infraestructura y operaciones administrativas.
+Me presento: soy {nombre_remitente}, de Mar del Plata. Estoy buscando \
+sumarme a un equipo donde pueda aplicar mis habilidades técnicas y \
+analíticas.
 
-Además de soporte técnico y redes, tengo experiencia real en entornos con presión \
-operativa: control de stock, POS, facturación, coordinación de equipos y documentación \
-de procesos. Por eso pensé que mi perfil podía ser pertinente para {nombre_empresa}.
+Tengo experiencia en programación (Go, Python, Rust), testing, soporte \
+IT, redes, automatización y documentación. Mi formación incluye \
+programación, física y medicina parcial. Me destaco encontrando \
+problemas antes de que se conviertan en incidentes.
 
-Adjunto mi CV.
+Si {nombre_empresa} tiene búsquedas abiertas o futuras, adjunto mi CV.
 
 {firma}""",
 
     """\
 Estimado equipo:
 
-Soy {nombre_remitente}. Les envío mi CV para que lo tengan presente en búsquedas \
-actuales o futuras de {nombre_empresa}.
+Soy {nombre_remitente}. Les envío mi CV para postulación espontánea \
+en {nombre_empresa}.
 
-Mi perfil está orientado a resolver problemas concretos: ordenar procesos, asistir a \
-usuarios, mantener equipos, documentar procedimientos y automatizar tareas repetitivas \
-cuando conviene hacerlo con Python o scripting.
+Mi perfil está orientado a resolver problemas concretos: testear \
+sistemas, detectar fallos, documentar procedimientos, ordenar datos \
+y automatizar tareas repetitivas. Tengo experiencia real en entornos \
+operativos y formación técnica autodidacta.
 
-Saludos,
+Quedo a disposición.
 
 {firma}""",
 
     """\
 Buenas tardes,
 
-Soy {nombre_remitente}. Me interesa acercar mi perfil a {nombre_empresa} porque puedo \
-aportar en un punto intermedio entre administración, soporte técnico e implementación \
-de herramientas internas.
+Soy {nombre_remitente}. Me interesa postularme a {nombre_empresa} \
+porque creo que mi perfil técnico-analítico puede aportar valor.
 
-Tengo experiencia con Windows/Linux, redes TCP/IP, Excel avanzado, facturación, POS, \
-stock, recuperación de datos y desarrollo de utilidades para trabajo operativo.
+Tengo experiencia con desarrollo web, bases de datos, Linux, redes, \
+seguridad aplicada (OWASP), testing y operaciones. Trabajo bien con \
+estructura y procesos, y prefiero resolver problemas técnicos antes \
+que tareas sociales repetitivas.
 
 Adjunto CV en PDF.
 
@@ -146,11 +156,11 @@ Adjunto CV en PDF.
     """\
 Hola {nombre_empresa},
 
-Les escribo de manera directa para evitar una postulación genérica por portal. Soy \
-{nombre_remitente} y busco sumarme a una organización donde mi combinación de soporte \
-IT, administración y automatización tenga uso práctico.
+Les escribo de manera directa para presentar mi candidatura. Soy \
+{nombre_remitente} y busco un equipo donde mi combinación de soporte \
+IT, desarrollo, QA y capacidad analítica tenga aplicación práctica.
 
-El CV adjunto resume mi experiencia en operaciones, sistemas, desarrollo y soporte.
+El CV adjunto resume mi experiencia técnica, operativa y formativa.
 
 Muchas gracias por su tiempo.
 
@@ -159,11 +169,13 @@ Muchas gracias por su tiempo.
     """\
 Buenos días,
 
-Quería dejarles una presentación breve. Soy {nombre_remitente}, con experiencia en \
-gestión operativa, soporte IT, documentación, redes y automatización.
+Quería presentarme de forma directa. Soy {nombre_remitente}, con \
+experiencia en desarrollo de software, soporte IT, testing y \
+operaciones.
 
-Si {nombre_empresa} necesita una persona que pueda moverse entre tareas administrativas \
-y técnicas sin depender siempre de terceros, mi perfil puede resultarles útil.
+Si {nombre_empresa} necesita una persona que detecte errores antes \
+que nadie, documente procesos con claridad y resuelva problemas \
+técnicos sin depender de terceros, mi perfil puede resultarles útil.
 
 Adjunto mi CV para evaluación.
 
@@ -172,14 +184,15 @@ Adjunto mi CV para evaluación.
     """\
 Estimados/as,
 
-Mi nombre es {nombre_remitente}. Les acerco mi candidatura espontánea para \
-{nombre_empresa}, con foco en administración, soporte técnico y mejora de procesos.
+Mi nombre es {nombre_remitente}. Me postulo de forma directa a \
+{nombre_empresa}.
 
-Mi experiencia combina trabajo operativo real con formación en desarrollo de software, \
-sistemas, Linux/Windows, redes y seguridad aplicada. Esa mezcla me permite entender \
-problemas de oficina y también resolver la parte técnica cuando aparece.
+Mi experiencia combina trabajo operativo real con formación en \
+desarrollo de software, sistemas, ciencias y seguridad aplicada. \
+Me destaco en detección de patrones, resolución de problemas, \
+documentación clara y aprendizaje autodidacta.
 
-Quedo atenta.
+Adjunto CV. Quedo atenta a una respuesta.
 
 {firma}""",
 )

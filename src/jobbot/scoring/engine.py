@@ -36,9 +36,12 @@ RUBRO_WEIGHTS: Final[dict[str, dict[str, int | str | list]]] = {
             "saas", "devops", "cloud", "startup", "programación", "api",
             "backend", "frontend", "datos", "inteligencia artificial", "ia",
             "qa", "testing", "redes", "linux",
+            # ATICMA-specific
+            "integraciones", "seguridad", "iot", "videojuegos",
+            "infraestructura", "robótica", "aplicaciones", "automatización",
         ],
         "score_bonus": 10,
-        "cv":          "CV_Tech",
+        "cv":          "CV_IT_QA",
     },
     "admin_it": {
         "keywords": [
@@ -46,9 +49,13 @@ RUBRO_WEIGHTS: Final[dict[str, dict[str, int | str | list]]] = {
             "contable", "jurídico", "salud", "comercio", "agencia",
             "consultorio", "laboratorio", "sanatorio", "legal", "escribanía",
             "propiedades", "real estate", "facturación", "secretaría",
+            # ATICMA-specific
+            "e-commerce", "crm", "logística", "stock", "páginas web",
+            "sistemas de gestión", "consultoría", "marketing",
+            "comunicación", "diseño", "seo", "publicidad",
         ],
         "score_bonus": 20,
-        "cv":          "CV_Admin_IT",
+        "cv":          "CV_BackOffice",
     },
     "hybrid": {
         "keywords": [
@@ -58,9 +65,13 @@ RUBRO_WEIGHTS: Final[dict[str, dict[str, int | str | list]]] = {
             "soporte técnico", "departamento de sistemas", "sistemas internos",
             "automatización", "procesos", "inventario", "stock", "planta",
             "sucursal", "sucursales", "erp", "wms", "crm",
+            # ATICMA-specific
+            "biotecnología", "green tech", "industria 4.0", "producción",
+            "calidad", "datos científicos", "agro", "laboratorio",
+            "alimentos", "veterinaria", "medio ambiente",
         ],
         "score_bonus": 18,
-        "cv":          "CV_Hybrid",
+        "cv":          "CV_Ciencia",
     },
 }
 
@@ -335,7 +346,7 @@ def analizar_empresa(
     """
     if not html or not html.strip():
         logger.warning("HTML vacío | dominio=%s", dominio)
-        return ResultadoScoring(perfil_cv="CV_Admin_IT", score_total=0, umbral_auto=umbral_auto)
+        return ResultadoScoring(perfil_cv="CV_BackOffice", score_total=0, umbral_auto=umbral_auto)
 
     texto_plano    = _strip_html(html)
     texto_semantico = _extraer_texto_semantico(html)   # NUEVO: title + meta desc
@@ -357,7 +368,7 @@ def analizar_empresa(
             dominio, score, CORTE_TEMPRANO,
         )
         return ResultadoScoring(
-            perfil_cv="CV_Admin_IT",
+            perfil_cv="CV_BackOffice",
             score_total=score,
             penalty_matches=penalty_matches,
             umbral_auto=umbral_auto,

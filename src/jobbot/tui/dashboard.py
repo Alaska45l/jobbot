@@ -453,7 +453,7 @@ def bot_state_from_phase(phase_str: str) -> BotState:
     p = phase_str.lower()
     if any(k in p for k in ("dork", "duckg", "osint", "semilla")):
         return BotState.DORKING
-    if any(k in p for k in ("scrape", "scrap", "playwright", "extray")):
+    if any(k in p for k in ("scrape", "scrap", "playwright", "extray", "aticma")):
         return BotState.SCRAPING
     if any(k in p for k in ("smtp", "mail", "email", "correo", "dispatch")):
         return BotState.MAILING

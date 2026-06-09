@@ -32,7 +32,10 @@ _DDL_STATEMENTS: tuple[str, ...] = (
         nombre         TEXT    NOT NULL,
         dominio        TEXT    NOT NULL UNIQUE,
         rubro          TEXT,
-        perfil_cv      TEXT    CHECK(perfil_cv IN ('CV_Tech', 'CV_Admin_IT', 'CV_Hybrid')),
+        perfil_cv      TEXT    CHECK(perfil_cv IN (
+            'CV_Tech', 'CV_Admin_IT', 'CV_Hybrid',
+            'CV_IT_QA', 'CV_BackOffice', 'CV_Ciencia'
+        )),
         score          INTEGER NOT NULL DEFAULT 0,
         fecha_scraping TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     ) STRICT;
@@ -115,25 +118,48 @@ def init_db(db_path: Path = DB_PATH) -> None:
         conn.execute("PRAGMA cache_size = -8000;") 
         for statement in _DDL_STATEMENTS:
             conn.execute(statement)
-        # --- Migration: widen perfil_cv CHECK to include CV_Hybrid ---
-        # SQLite CHECK constraints are baked at CREATE time. For existing DBs,
-        # we must rebuild the table. This is idempotent and preserves all data.
+        # --- Migration: widen perfil_cv CHECK to include all profiles ---
         try:
             conn.execute("PRAGMA writable_schema = ON;")
-            conn.execute("""
-                UPDATE sqlite_master
-                SET sql = REPLACE(
-                    sql,
-                    "perfil_cv IN ('CV_Tech', 'CV_Admin_IT')",
-                    "perfil_cv IN ('CV_Tech', 'CV_Admin_IT', 'CV_Hybrid')"
+            # Migrate from any previous CHECK to the full set
+            for old_check in (
+                "perfil_cv IN ('CV_Tech', 'CV_Admin_IT')",
+                "perfil_cv IN ('CV_Tech', 'CV_Admin_IT', 'CV_Hybrid')",
+            ):
+                new_check = (
+                    "perfil_cv IN ("
+                    "'CV_Tech', 'CV_Admin_IT', 'CV_Hybrid', "
+                    "'CV_IT_QA', 'CV_BackOffice', 'CV_Ciencia')"
                 )
-                WHERE type = 'table' AND name = 'empresas';
-            """)
+                conn.execute(
+                    "UPDATE sqlite_master SET sql = REPLACE(sql, ?, ?) "
+                    "WHERE type = 'table' AND name = 'empresas';",
+                    (old_check, new_check),
+                )
             conn.execute("PRAGMA writable_schema = OFF;")
             conn.execute("PRAGMA integrity_check;")
-            logger.info("Migration: perfil_cv CHECK constraint widened to include CV_Hybrid.")
+            logger.info("Migration: perfil_cv CHECK constraint widened for ATICMA profiles.")
         except sqlite3.Error as exc:
-            logger.warning("Migration CV_Hybrid skipped (may already be applied): %s", exc)
+            logger.warning("Migration perfil_cv skipped (may already be applied): %s", exc)
+
+        # --- Migration: add ATICMA columns ---
+        _aticma_columns = (
+            ("descripcion_aticma", "TEXT DEFAULT ''"),
+            ("direccion",          "TEXT DEFAULT ''"),
+            ("ubicacion",          "TEXT DEFAULT ''"),
+            ("telefono",           "TEXT DEFAULT ''"),
+            ("keywords_scraped",   "TEXT DEFAULT ''"),
+            ("descripcion_scraped","TEXT DEFAULT ''"),
+            ("tiene_vacantes",     "INTEGER DEFAULT 0"),
+            ("fuente",             "TEXT DEFAULT 'dorking'"),
+        )
+        for col_name, col_def in _aticma_columns:
+            try:
+                conn.execute(f"ALTER TABLE empresas ADD COLUMN {col_name} {col_def};")
+                logger.info("Migration: columna '%s' agregada a empresas.", col_name)
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
     logger.info("Base de datos inicializada en: %s", db_path)
 
 
@@ -383,11 +409,209 @@ def get_empresas_listas_para_envio(
     return rows
 
 
+# ---------------------------------------------------------------------------
+# ATICMA-specific CRUD
+# ---------------------------------------------------------------------------
+
+def upsert_empresa_aticma(
+    nombre: str,
+    dominio: str,
+    descripcion: str = "",
+    direccion: str = "",
+    ubicacion: str = "",
+    telefono: str = "",
+    perfil_cv: Optional[str] = None,
+    score: int = 55,
+) -> int:
+    """
+    Inserta o actualiza una empresa ATICMA.
+    Score por defecto 55 (pre-calificadas, aptas para envío).
+    """
+    if not dominio or not dominio.strip():
+        raise ValueError("El dominio no puede estar vacío.")
+
+    dominio = dominio.strip().lower()
+    params = {
+        "nombre":    nombre.strip(),
+        "dominio":   dominio,
+        "rubro":     None,
+        "perfil_cv": perfil_cv,
+        "score":     score,
+        "fecha":     datetime.now(tz=timezone.utc).isoformat(),
+        "desc":      descripcion,
+        "dir":       direccion,
+        "ubi":       ubicacion,
+        "tel":       telefono,
+        "fuente":    "aticma",
+    }
+
+    sql = """
+        INSERT INTO empresas (
+            nombre, dominio, rubro, perfil_cv, score, fecha_scraping,
+            descripcion_aticma, direccion, ubicacion, telefono, fuente
+        )
+        VALUES (
+            :nombre, :dominio, :rubro, :perfil_cv, :score,
+            '2000-01-01T00:00:00Z',
+            :desc, :dir, :ubi, :tel, :fuente
+        )
+        ON CONFLICT(dominio) DO UPDATE SET
+            nombre              = excluded.nombre,
+            perfil_cv           = COALESCE(excluded.perfil_cv, empresas.perfil_cv),
+            descripcion_aticma  = excluded.descripcion_aticma,
+            direccion           = excluded.direccion,
+            ubicacion           = excluded.ubicacion,
+            telefono            = excluded.telefono,
+            fuente              = 'aticma';
+    """
+
+    sql_select = "SELECT id FROM empresas WHERE dominio = ? LIMIT 1;"
+
+    with get_connection() as conn:
+        conn.execute(sql, params)
+        row = conn.execute(sql_select, (dominio,)).fetchone()
+        row_id: int = row[0] if row else 0
+
+    logger.info(
+        "Empresa ATICMA upserted | nombre=%s | dominio=%s | id=%d",
+        nombre, dominio, row_id,
+    )
+    return row_id
+
+
+def update_empresa_scraped_data(
+    empresa_id: int,
+    keywords_scraped: str = "",
+    descripcion_scraped: str = "",
+    tiene_vacantes: bool = False,
+    perfil_cv: Optional[str] = None,
+    score: Optional[int] = None,
+) -> None:
+    """Actualiza los datos extraídos del scraping para una empresa ATICMA."""
+    parts = [
+        "keywords_scraped = ?",
+        "descripcion_scraped = ?",
+        "tiene_vacantes = ?",
+        "fecha_scraping = ?",
+    ]
+    values: list = [
+        keywords_scraped,
+        descripcion_scraped,
+        int(tiene_vacantes),
+        datetime.now(tz=timezone.utc).isoformat(),
+    ]
+
+    if perfil_cv is not None:
+        parts.append("perfil_cv = ?")
+        values.append(perfil_cv)
+    if score is not None:
+        parts.append("score = ?")
+        values.append(score)
+
+    values.append(empresa_id)
+    sql = f"UPDATE empresas SET {', '.join(parts)} WHERE id = ?;"
+
+    with get_connection() as conn:
+        conn.execute(sql, values)
+
+    logger.info(
+        "Datos scrapeados actualizados | empresa_id=%d | vacantes=%s",
+        empresa_id, tiene_vacantes,
+    )
+
+
+def get_empresas_aticma_pendientes(
+    limit: int = 100,
+) -> list[sqlite3.Row]:
+    """
+    Retorna empresas ATICMA que aún no fueron scrapeadas (fecha antigua)
+    o que no tienen datos de scraping.
+    """
+    sql = """
+        SELECT * FROM empresas
+        WHERE fuente = 'aticma'
+          AND (fecha_scraping <= '2001-01-01T00:00:00Z'
+               OR keywords_scraped = '' OR keywords_scraped IS NULL)
+        ORDER BY nombre ASC
+        LIMIT ?;
+    """
+    with get_connection() as conn:
+        return conn.execute(sql, (limit,)).fetchall()
+
+
+def get_empresas_aticma_listas_para_envio(
+    cooldown_days: int = COOLDOWN_DAYS,
+    limit: int = 100,
+) -> list[sqlite3.Row]:
+    """
+    Retorna empresas ATICMA listas para envío (no en cooldown).
+    Las empresas ATICMA están pre-calificadas, no requieren min_score.
+    """
+    cutoff: str = (
+        datetime.now(tz=timezone.utc) - timedelta(days=cooldown_days)
+    ).isoformat()
+
+    sql = """
+        SELECT e.*
+        FROM empresas e
+        LEFT JOIN campanas_envios ce
+            ON ce.empresa_id = e.id
+            AND ce.fecha_envio >= :cutoff
+            AND ce.estado IN ('enviado', 'pendiente')
+        WHERE e.fuente = 'aticma'
+          AND ce.id IS NULL
+        ORDER BY e.nombre ASC
+        LIMIT :limit;
+    """
+    with get_connection() as conn:
+        rows = conn.execute(sql, {
+            "cutoff": cutoff,
+            "limit":  limit,
+        }).fetchall()
+
+    logger.info(
+        "Empresas ATICMA listas para envío: %d (cooldown=%d días)",
+        len(rows), cooldown_days,
+    )
+    return rows
+
+
+def get_empresas_aticma_stats() -> dict[str, int]:
+    """Estadísticas de empresas ATICMA para la TUI."""
+    sql = """
+        SELECT
+            COUNT(*)                                                  AS total,
+            SUM(CASE WHEN keywords_scraped != '' THEN 1 ELSE 0 END)  AS scrapeadas,
+            SUM(CASE WHEN tiene_vacantes = 1 THEN 1 ELSE 0 END)      AS con_vacantes,
+            SUM(CASE WHEN perfil_cv = 'CV_IT_QA' THEN 1 ELSE 0 END)  AS cv_it_qa,
+            SUM(CASE WHEN perfil_cv = 'CV_BackOffice' THEN 1 ELSE 0 END) AS cv_backoffice,
+            SUM(CASE WHEN perfil_cv = 'CV_Ciencia' THEN 1 ELSE 0 END)    AS cv_ciencia
+        FROM empresas
+        WHERE fuente = 'aticma';
+    """
+    try:
+        with get_connection() as conn:
+            row = conn.execute(sql).fetchone()
+            return {
+                "total":         int(row["total"]         or 0),
+                "scrapeadas":    int(row["scrapeadas"]    or 0),
+                "con_vacantes":  int(row["con_vacantes"]  or 0),
+                "cv_it_qa":      int(row["cv_it_qa"]      or 0),
+                "cv_backoffice": int(row["cv_backoffice"] or 0),
+                "cv_ciencia":    int(row["cv_ciencia"]    or 0),
+            }
+    except Exception:
+        return {
+            "total": 0, "scrapeadas": 0, "con_vacantes": 0,
+            "cv_it_qa": 0, "cv_backoffice": 0, "cv_ciencia": 0,
+        }
+
+
 if __name__ == "__main__":
     init_db()
     emp_id = upsert_empresa(
         nombre="TechMDP SRL", dominio="techmdp.com.ar",
-        rubro="software", perfil_cv="CV_Tech", score=90,
+        rubro="software", perfil_cv="CV_IT_QA", score=90,
     )
     insert_contacto(emp_id, "rrhh@techmdp.com.ar", tipo="RRHH", prioridad=1)
     insert_contacto(emp_id, "linkedin.com/company/techmdp", tipo="LinkedIn", prioridad=2)

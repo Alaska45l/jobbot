@@ -31,6 +31,8 @@ LEGACY_TEMPLATE_PATH: Final[Path] = PROJECT_ROOT / "cvs" / "template.typ"
 # Se reemplazan con str.replace() — simple y determinista.
 _MARKER_EMPRESA:  Final[str] = "{{ EMPRESA }}"
 _MARKER_KEYWORDS: Final[str] = "{{ KEYWORDS }}"
+_MARKER_PUESTO:   Final[str] = "{{ PUESTO_OBJETIVO }}"
+_MARKER_PARRAFO:  Final[str] = "{{ PARRAFO_EMPRESA }}"
 
 # Timeout máximo para que typst termine la compilación (segundos).
 _COMPILE_TIMEOUT_S: Final[float] = 30.0
@@ -141,7 +143,9 @@ def _render_markers(template_raw: str, values: dict[str, str]) -> str:
 async def compilar_cv_dinamico(
     nombre_empresa: str,
     keywords: list[str],
-    perfil_cv: str = "CV_Admin_IT",
+    perfil_cv: str = "CV_IT_QA",
+    puesto_objetivo: str = "",
+    parrafo_empresa: str = "",
 ) -> bytes:
 
     await _verificar_typst()
@@ -192,6 +196,10 @@ async def compilar_cv_dinamico(
             "SKILLS": _format_bullets(profile.skills),
             "EDUCATION": _format_bullets(EDUCATION),
             "CERTIFICATIONS": _format_bullets(CERTIFICATIONS),
+            "PUESTO_OBJETIVO": _escape_typst_text(
+                puesto_objetivo or getattr(profile, 'puesto_objetivo', '')
+            ),
+            "PARRAFO_EMPRESA": _escape_typst_text(parrafo_empresa),
         },
     )
 
@@ -209,10 +217,12 @@ async def compilar_cv_dinamico(
         typ_in   = tmp / "cv.typ"
         pdf_out  = tmp / "cv.pdf"
 
-        # --- NUEVO: Copiar la imagen de perfil al directorio temporal ---
-        img_src = PROJECT_ROOT / "cvs" / "perfil.jpg"
-        if img_src.exists():
-            shutil.copy(img_src, tmp / "perfil.jpg")
+        # --- Copiar la imagen de perfil al directorio temporal ---
+        for img_name in ("perfil.webp", "perfil.jpg", "perfil.png"):
+            img_src = PROJECT_ROOT / "cvs" / img_name
+            if img_src.exists():
+                shutil.copy(img_src, tmp / img_name)
+                break
         # ----------------------------------------------------------------
 
         # Escribir plantilla renderizada en el temp dir

@@ -1134,7 +1134,7 @@ async def _async_main(args: argparse.Namespace) -> None:
             pass
 
     modo = next(
-        m for m in ("dork", "scrape", "dork_scrape", "mail", "wa", "auto")
+        m for m in ("dork", "scrape", "dork_scrape", "mail", "wa", "aticma", "auto")
         if getattr(args, m, False)
     )
     logger_fn.info(
@@ -1189,6 +1189,9 @@ async def _async_main(args: argparse.Namespace) -> None:
             elif args.mail:        await pipeline_mail(args, estado)
             elif args.wa:          await pipeline_wa(args, estado)
             elif args.auto:        await pipeline_auto(args, estado)
+            elif args.aticma:
+                from jobbot.aticma.pipeline import pipeline_aticma
+                await pipeline_aticma(args, estado)
         finally:
             stop_event.set()
             refresh_task.cancel()

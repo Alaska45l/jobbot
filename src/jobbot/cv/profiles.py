@@ -1,4 +1,10 @@
-"""Resume profile definitions for Alaska Elaina Gonzalez."""
+"""Resume profile definitions for Alaska Elaina Gonzalez.
+
+Perfiles orientados a empresas ATICMA de Mar del Plata:
+  - CV_IT_QA:       Software, QA, soporte, cloud, seguridad, IoT, infra.
+  - CV_BackOffice:  E-commerce, CRM, logística, gestión, consultoría.
+  - CV_Ciencia:     Biotech, green tech, calidad, laboratorio, ciencia.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +19,7 @@ class CVProfile:
     summary: str
     experience: tuple[str, ...]
     skills: tuple[str, ...]
+    puesto_objetivo: str
 
 
 CONTACT = {
@@ -37,76 +44,139 @@ CERTIFICATIONS: tuple[str, ...] = (
 )
 
 PROFILES: dict[str, CVProfile] = {
-    "CV_Tech": CVProfile(
-        code="CV_Tech",
-        template_file="cv_tech.typ",
-        title="Software Developer & Security Researcher",
+    # ── CV 1: Perfil Técnico IT / QA / Soporte ──────────────────────────
+    "CV_IT_QA": CVProfile(
+        code="CV_IT_QA",
+        template_file="cv_it_qa.typ",
+        title="Perfil Técnico IT / QA / Soporte",
+        puesto_objetivo="QA Tester / Soporte IT / Desarrolladora Jr",
         summary=(
-            "Perfil de ciclo completo de software: análisis, diseño orientado a objetos, "
-            "implementación full-stack, despliegue y mantenimiento. Foco técnico en Go, "
-            "PostgreSQL, SvelteKit, Rust/Tauri, Linux y ciberseguridad ofensiva aplicada."
+            "Perfil técnico orientado a QA, soporte IT, troubleshooting, desarrollo "
+            "web y análisis de sistemas. Experiencia autodidacta en Go, PostgreSQL, "
+            "SvelteKit, TypeScript, Tailwind CSS, Rust, Tauri, Python, y Cloudflare "
+            "Workers/Pages. Capacidad demostrada para detectar vulnerabilidades "
+            "(IDOR/BOLA), documentar fallos con precisión y resolver problemas de "
+            "infraestructura. Busco integrarme a equipos de QA, soporte, "
+            "infraestructura, cloud o seguridad."
         ),
         experience=(
-            "Lead Systems Engineer & Founder - INVARIANT SYSTEM, 2026-Presente: plataforma forense de tres capas con Go/Fiber, PostgreSQL y SvelteKit; utilidad desktop Rust/Tauri para flashing; ISO live Arch Linux con Python/Rich/LaTeX; CSRF, CSP, WebAuthn y CI/CD en Cloudflare.",
-            "Software Developer & Security Researcher - Independiente, 2025-Presente: desarrollo full-stack Go+SvelteKit, herramientas desktop Rust/Tauri, despliegues Cloudflare y detección responsable de IDOR crítico en una plataforma e-commerce mayor.",
-            "IT Support Technician - Freelance, 2019-Presente: troubleshooting HW/SW, instalación y hardening Windows/Linux, recuperación de datos y mantenimiento de redes.",
+            "Proyectos independientes (2024-Presente): Desarrollo full-stack con SvelteKit y Go/Fiber, "
+            "aplicaciones desktop con Rust/Tauri, testing manual y automatizado, auditoría de seguridad "
+            "con detección responsable de vulnerabilidad IDOR/BOLA crítica en plataforma e-commerce, "
+            "uso de herramientas de IA para desarrollo y documentación.",
+            "Soporte Técnico IT Freelance (2019-2025): Diagnóstico de hardware y software, "
+            "instalación y hardening de Windows/Linux, configuración de redes TCP/IP, "
+            "recuperación de datos, mantenimiento preventivo y correctivo.",
+            "Falucho / La MilaPizza / Tres Picos (12/2023-01/2026): Gestión de sistemas POS Morphi, "
+            "control de stock, facturación AFIP, troubleshooting de equipos, "
+            "resolución de incidencias técnicas en múltiples sucursales.",
         ),
         skills=(
-            "Go 1.26.2, Fiber v2, PostgreSQL, REST APIs, golang-jwt, go-webauthn",
-            "SvelteKit, Svelte 5, TypeScript, Tailwind CSS v4, Vite, Cloudflare Pages/Workers",
-            "Rust, Tauri v2, tokio, Python 3, Rich, Jinja2, C#, SQL, Git",
-            "Pentesting, OWASP Top 10, IDOR/BOLA, Burp Suite, CVSS, Responsible Disclosure",
-            "Linux Arch/Debian/Ubuntu, mkinitcpio, Tectonic/LaTeX, CI/CD",
+            "QA/Testing: Testing manual funcional, detección de edge cases, reporte de bugs, "
+            "análisis de flujos, reproducción de errores, pensamiento sistémico",
+            "Soporte IT: Troubleshooting HW/SW, redes TCP/IP, Windows/Linux, recuperación de datos, "
+            "mantenimiento preventivo, documentación de incidencias",
+            "Backend: Go/Fiber, Rust, Python 3, PostgreSQL, APIs REST, SQL, Git",
+            "Frontend: SvelteKit, TypeScript, Tailwind CSS v4, Vite, HTML/CSS",
+            "Cloud/DevOps: Cloudflare Workers/Pages, CI/CD, Linux Arch/Debian/Ubuntu",
+            "Seguridad: OWASP Top 10, IDOR/BOLA, Burp Suite, CVSS, Responsible Disclosure",
+            "IA/Automatización: Uso de herramientas IA para desarrollo, scraping, bots, automatización",
         ),
     ),
-    "CV_Admin_IT": CVProfile(
-        code="CV_Admin_IT",
-        template_file="cv_admin_it.typ",
-        title="Administración, Operaciones y Soporte IT",
+
+    # ── CV 2: Back Office / E-commerce / Operaciones Digitales ──────────
+    "CV_BackOffice": CVProfile(
+        code="CV_BackOffice",
+        template_file="cv_backoffice.typ",
+        title="Back Office Técnico / E-commerce / Operaciones Digitales",
+        puesto_objetivo="Back Office / Operaciones E-commerce / Soporte de Gestión",
         summary=(
-            "Perfil administrativo con base técnica sólida para PyMEs, estudios, clínicas y "
-            "organizaciones que necesitan orden operativo, soporte a usuarios, documentación, "
-            "facturación, Excel avanzado y mantenimiento IT cotidiano."
+            "Perfil operativo con base técnica sólida, orientado a back office, "
+            "e-commerce, control de datos, gestión de stock, sistemas de gestión y "
+            "operaciones digitales. Experiencia real en entornos de alta demanda "
+            "con POS, facturación, control de inventario y coordinación operativa. "
+            "Capacidad para detectar inconsistencias, ordenar información, automatizar "
+            "tareas repetitivas y proponer mejoras de proceso."
         ),
         experience=(
-            "Operations & Admin Manager - Falucho/La MilaPizza/Tres Picos, 12/2023-01/2026: facturación AFIP, POS Morphi, control de stock, mantenimiento IT de sucursales, coordinación operativa y liderazgo de equipo.",
-            "IT Support Technician - Freelance, 2019-Presente: soporte HW/SW, instalación Windows/Linux, hardening básico, redes TCP/IP, recuperación de datos y mantenimiento preventivo.",
-            "Software Developer & Security Researcher - Independiente, 2025-Presente: automatización práctica, documentación técnica y herramientas internas para reducir tareas repetitivas.",
+            "Falucho / La MilaPizza / Tres Picos (12/2023-01/2026): Gestión operativa integral, "
+            "sistema POS Morphi, carga y control de productos, stock, facturación AFIP/ARCA, "
+            "inventarios, generación de reportes, coordinación con proveedores, "
+            "resolución de incidencias operativas en múltiples sucursales.",
+            "Proyectos independientes - Operaciones digitales / Automatización / Web (2024-Presente): "
+            "Desarrollo de herramientas de automatización, scraping de datos, "
+            "gestión de catálogos digitales, documentación de procesos, "
+            "optimización de flujos operativos con Python.",
+            "Soporte Técnico IT Freelance (2019-2025): Diagnóstico y resolución de problemas "
+            "de hardware/software, instalación de sistemas, redes, recuperación de datos.",
         ),
         skills=(
-            "AFIP/ARCA, facturación, POS Morphi, control de stock, gestión documental",
-            "Windows 10/11/Server, IIS, GPO, Microsoft 365, soporte a usuarios",
-            "Excel avanzado, administración, atención a clientes y proveedores",
-            "TCP/IP, subnetting, mantenimiento de redes, instalación y hardening de sistemas",
-            "Python para automatización administrativa y reportes internos",
+            "E-commerce/Operaciones: Carga de productos, control de stock, catálogos digitales, "
+            "publicaciones, detección de errores de precio/inventario, logística básica",
+            "Sistemas de gestión: POS Morphi, facturación AFIP/ARCA, control documental, "
+            "gestión de proveedores, reportes operativos",
+            "Datos/Documentación: Excel/Google Sheets avanzado, carga y control de datos, "
+            "detección de inconsistencias, documentación de procesos",
+            "Herramientas digitales: Google Workspace, Notion, VS Code, navegador/devtools, "
+            "plataformas e-commerce, automatización básica",
+            "Web/IT: HTML, CSS, JavaScript, troubleshooting, redes TCP/IP, Windows/Linux",
+            "IA/Automatización: Python para automatización de tareas, scraping, "
+            "herramientas IA para productividad",
         ),
     ),
-    "CV_Hybrid": CVProfile(
-        code="CV_Hybrid",
-        template_file="cv_hybrid.typ",
-        title="Operaciones IT, Automatización y Soporte Técnico",
+
+    # ── CV 3: Calidad / Laboratorio / Ciencia Aplicada ──────────────────
+    "CV_Ciencia": CVProfile(
+        code="CV_Ciencia",
+        template_file="cv_ciencia.typ",
+        title="Calidad / Laboratorio / Ciencia Aplicada",
+        puesto_objetivo="Control de Calidad / Auxiliar de Laboratorio / Documentación Técnica",
         summary=(
-            "Perfil híbrido para equipos que cruzan operaciones e infraestructura: gestión "
-            "administrativa, soporte IT, redes, automatización con Python, hardening de sistemas, "
-            "documentación y coordinación de procesos en entornos de alta demanda."
+            "Perfil con formación parcial en Medicina y Física, combinado con "
+            "experiencia en IT y control operativo. Orientado a calidad, laboratorio, "
+            "documentación técnica, control de procesos y ciencia aplicada. "
+            "Pensamiento analítico, registro preciso, capacidad para seguir protocolos "
+            "y detectar desviaciones. Interés fuerte en biotecnología, green tech, "
+            "industria alimenticia, producción, software de calidad y datos científicos."
         ),
         experience=(
-            "Operations & Admin Manager - Falucho/La MilaPizza/Tres Picos, 12/2023-01/2026: operación diaria, stock, facturación AFIP, POS Morphi, soporte IT de sucursales y coordinación de equipo.",
-            "IT Support Technician - Freelance, 2019-Presente: diagnóstico HW/SW, redes, recuperación de datos, instalación y hardening Windows/Linux, mantenimiento preventivo.",
-            "Lead Systems Engineer & Founder - INVARIANT SYSTEM, 2026-Presente: automatización técnica, herramientas Python/Rich, plataforma Go/PostgreSQL/SvelteKit y prácticas de seguridad enterprise.",
-            "Software Developer & Security Researcher - Independiente, 2025-Presente: scripting, herramientas internas, despliegues Cloudflare y seguridad aplicada.",
+            "Falucho / La MilaPizza / Tres Picos - Operaciones, control de stock y sistemas internos "
+            "(12/2023-01/2026): Control de inventario con métricas de calidad, "
+            "trazabilidad de productos, detección de errores en stock y facturación, "
+            "documentación de procesos operativos, registro preciso de movimientos.",
+            "Proyectos independientes - Análisis de sistemas / Documentación / Automatización "
+            "(2024-Presente): Documentación técnica de sistemas, análisis de flujos y procesos, "
+            "detección de fallos, automatización de tareas repetitivas, "
+            "reportes y análisis de datos con Python.",
+            "Soporte Técnico IT Freelance (2019-2025): Diagnóstico sistemático de problemas, "
+            "documentación de incidencias, resolución de fallos de hardware/software.",
         ),
         skills=(
-            "Operaciones, inventario, documentación, facturación AFIP, liderazgo de equipo",
-            "Python, scripting, automatización de procesos, reportes y herramientas internas",
-            "Windows Server, Linux, TCP/IP, subnetting, IIS, GPO, hardening y recuperación de datos",
-            "Soporte IT, mantenimiento de sucursales, diagnóstico HW/SW, atención a usuarios",
-            "Go, PostgreSQL, SvelteKit y Cloudflare como soporte técnico para sistemas internos",
+            "Ciencia aplicada: Biología, química, fisiología (medicina cursada), física (en curso), "
+            "lectura crítica de evidencia, pensamiento científico, bioseguridad básica",
+            "Calidad/Procesos: Control de calidad, trazabilidad, registro de desviaciones, "
+            "documentación de protocolos, BPM/POES nociones, mejora continua",
+            "Laboratorio/Producción: Observación metódica, seguimiento de protocolos, "
+            "registro de datos experimentales, control de variables",
+            "Datos: Excel/Sheets para análisis, Python para procesamiento, "
+            "documentación técnica, reportes, visualización básica",
+            "Sistemas/IT: Troubleshooting, redes, Windows/Linux, automatización, "
+            "herramientas digitales, Git/VS Code",
+            "Programación: Python, Go, HTML/CSS/JS, SQL, automatización de procesos, "
+            "herramientas IA para análisis y documentación",
         ),
     ),
 }
 
+# Backward compatibility: map old profile names to new ones
+_PROFILE_ALIASES: dict[str, str] = {
+    "CV_Tech": "CV_IT_QA",
+    "CV_Admin_IT": "CV_BackOffice",
+    "CV_Hybrid": "CV_Ciencia",
+}
+
 
 def get_profile(perfil_cv: str) -> CVProfile:
-    return PROFILES.get(perfil_cv, PROFILES["CV_Admin_IT"])
-
+    """Retorna el perfil de CV, soportando nombres legacy."""
+    resolved = _PROFILE_ALIASES.get(perfil_cv, perfil_cv)
+    return PROFILES.get(resolved, PROFILES["CV_IT_QA"])

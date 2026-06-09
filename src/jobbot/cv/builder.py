@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Final
 
-from jobbot.cv.profiles import CERTIFICATIONS, CONTACT, EDUCATION, get_profile
+from jobbot.cv.profiles import CONTACT, get_profile
 
 logger = logging.getLogger("jobbot.cv_builder")
 
@@ -126,7 +126,16 @@ def _escape_typst_text(value: str) -> str:
 
 
 def _format_bullets(items: tuple[str, ...]) -> str:
-    return "\n".join(f"- {_escape_typst_text(item)}" for item in items)
+    """Formatea items como texto Typst. Si el item ya contiene markup
+    (newlines, bullets), se inyecta tal cual. Si no, se prefija con '- '."""
+    parts: list[str] = []
+    for item in items:
+        if "\n" in item or item.strip().startswith("-"):
+            # Multi-line content with embedded Typst markup — inject raw
+            parts.append(item)
+        else:
+            parts.append(f"- {item}")
+    return "\n\n".join(parts)
 
 
 def _render_markers(template_raw: str, values: dict[str, str]) -> str:
@@ -184,22 +193,23 @@ async def compilar_cv_dinamico(
         {
             "EMPRESA": _escape_typst_text(nombre_empresa),
             "KEYWORDS": kw_typst,
-            "NOMBRE": _escape_typst_text(CONTACT["nombre"]),
-            "TITULO": _escape_typst_text(profile.title),
-            "UBICACION": _escape_typst_text(CONTACT["ubicacion"]),
-            "EMAIL": _escape_typst_text(CONTACT["email"]),
-            "LINKEDIN": _escape_typst_text(CONTACT["linkedin"]),
-            "PORTFOLIO": _escape_typst_text(CONTACT["portfolio"]),
-            "GITHUB": _escape_typst_text(CONTACT["github"]),
-            "SUMMARY": _escape_typst_text(profile.summary),
+            "NOMBRE": CONTACT["nombre"],
+            "TITULO": profile.title,
+            "UBICACION": CONTACT["ubicacion"],
+            "EMAIL": CONTACT["email"],
+            "TELEFONO": CONTACT["telefono"],
+            "PORTFOLIO": CONTACT["portfolio"],
+            "GITHUB": CONTACT["github"],
+            "SUMMARY": profile.summary,
             "EXPERIENCE": _format_bullets(profile.experience),
             "SKILLS": _format_bullets(profile.skills),
-            "EDUCATION": _format_bullets(EDUCATION),
-            "CERTIFICATIONS": _format_bullets(CERTIFICATIONS),
-            "PUESTO_OBJETIVO": _escape_typst_text(
+            "EDUCATION": _format_bullets(profile.education),
+            "IDIOMAS": profile.idiomas,
+            "FORTALEZAS": _format_bullets(profile.fortalezas),
+            "PUESTO_OBJETIVO": (
                 puesto_objetivo or getattr(profile, 'puesto_objetivo', '')
             ),
-            "PARRAFO_EMPRESA": _escape_typst_text(parrafo_empresa),
+            "PARRAFO_EMPRESA": parrafo_empresa,
         },
     )
 

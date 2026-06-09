@@ -3,7 +3,7 @@
 Perfiles orientados a empresas ATICMA de Mar del Plata:
   - CV_IT_QA:       Software, QA, soporte, cloud, seguridad, IoT, infra.
   - CV_BackOffice:  E-commerce, CRM, logistica, gestion, consultoria.
-  - CV_Ciencia:     Biotech, green tech, calidad, laboratorio, ciencia.
+  - CV_Ciencia:     Biotech, green tech, control de calidad, laboratorio, ciencia.
 
 El contenido se inyecta via {{ MARKERS }} en los templates Typst.
 Los items de experiencia / educacion usan markup Typst embebido.
@@ -58,8 +58,8 @@ PROFILES: dict[str, CVProfile] = {
             "backend, infraestructura, seguridad, despliegue y experiencia de "
             "usuario.\n\n"
             "Me destaco por mi pensamiento analitico, capacidad para detectar "
-            "inconsistencias, reproducir errores, documentar fallos y aprender "
-            "herramientas nuevas de forma autodidacta. Busco incorporarme a "
+            "inconsistencias, reproducir errores, documentar incidencias y aprender "
+            "herramientas nuevas con rapidez. Busco incorporarme a "
             "equipos de *QA, soporte tecnico, infraestructura IT, software a "
             "medida, integraciones, sistemas de gestion, seguridad informatica "
             "o cloud*."
@@ -150,7 +150,7 @@ PROFILES: dict[str, CVProfile] = {
             "text(9pt, fill: rgb(\"#555555\"))[2024 -- 2025])\n"
             "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))[UNMDP]\n"
             "#text(8.5pt)[_Competencias asociadas:_ terminologia cientifica, "
-            "bioseguridad, lectura tecnica, trabajo bajo presion y analisis "
+            "bioseguridad, lectura tecnica, criterio operativo y analisis "
             "de sistemas biologicos.]",
 
             # UNICEN
@@ -196,7 +196,7 @@ PROFILES: dict[str, CVProfile] = {
             "Resolucion de problemas tecnicos.",
             "Capacidad para aprender herramientas nuevas rapidamente.",
             "Documentacion clara de errores y procesos.",
-            "Buena respuesta ante presion operativa.",
+            "Priorizacion en entornos operativos.",
             "Autonomia, curiosidad tecnica y orientacion a sistemas.",
         ),
     ),
@@ -308,7 +308,7 @@ PROFILES: dict[str, CVProfile] = {
             "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
             "[Universidad Nacional de Mar del Plata]\n"
             "#text(8.5pt)[_Competencias asociadas:_ organizacion de "
-            "informacion cientifica, trabajo bajo presion, comunicacion con "
+            "informacion cientifica, organizacion de datos, comunicacion con "
             "perfiles diversos y analisis de procesos.]",
 
             # UNICEN
@@ -353,31 +353,32 @@ PROFILES: dict[str, CVProfile] = {
             "Capacidad para aprender sistemas nuevos.",
             "Autonomia operativa.",
             "Buena comunicacion escrita.",
-            "Experiencia en entornos de presion y operacion real.",
+            "Experiencia en entornos operativos reales.",
         ),
     ),
 
-    # -- CV 3: Calidad / Laboratorio / Ciencia Aplicada -----------------
+    # -- CV 3: Control de Calidad / Laboratorio / Ciencia Aplicada ------
     "CV_Ciencia": CVProfile(
         code="CV_Ciencia",
         template_file="cv_ciencia.typ",
-        title="Calidad / Laboratorio / Ciencia Aplicada",
+        title="Control de Calidad / Laboratorio / Ciencia Aplicada",
         puesto_objetivo="Control de Calidad / Auxiliar de Laboratorio / Documentacion Tecnica",
         summary=(
-            "Orientacion a *calidad, laboratorio, documentacion tecnica, "
+            "Orientacion a *control de calidad, laboratorio, documentacion tecnica, "
             "control de procesos, ciencia aplicada y analisis de "
-            "informacion*. Cuento con formacion universitaria parcial en "
-            "Medicina, Fisica y Desarrollo de Aplicaciones Informaticas, "
-            "junto con experiencia laboral en operaciones, stock, "
-            "facturacion, sistemas POS, soporte IT y resolucion de "
-            "problemas.\n\n"
+            "informacion*. Cuento con formacion universitaria en Fisica, "
+            "cursada previa en Medicina y base tecnica en Desarrollo de "
+            "Aplicaciones Informaticas, junto con experiencia laboral en "
+            "operaciones, stock, facturacion, sistemas POS, soporte IT y "
+            "resolucion de problemas.\n\n"
             "Me interesa trabajar en entornos donde se valoren el "
             "pensamiento analitico, el registro preciso, la observacion, "
             "la deteccion de desviaciones, el cumplimiento de procedimientos "
             "y la mejora de procesos. Tengo especial afinidad por areas "
             "vinculadas a *biotecnologia, green tech, industria alimentaria, "
-            "software de produccion, automatizacion, logistica-stock, calidad, "
-            "salud, datos cientificos y sistemas tecnicos*.\n\n"
+            "software de produccion, automatizacion, logistica-stock, "
+            "control de calidad, salud, datos cientificos y sistemas "
+            "tecnicos*.\n\n"
             "Mi perfil combina base cientifica, criterio tecnico y "
             "experiencia operativa, lo que me permite adaptarme a tareas de "
             "control, documentacion, analisis y soporte en entornos "
@@ -483,9 +484,9 @@ PROFILES: dict[str, CVProfile] = {
             "salud, lectura critica de informacion cientifica, terminologia "
             "medica.",
 
-            "*Calidad y procesos:* control de stock, deteccion de desvios, "
-            "documentacion de procesos, reportes, seguimiento de insumos, "
-            "control operativo.",
+            "*Control de calidad y procesos:* control de stock, deteccion "
+            "de desvios, documentacion de procesos, reportes, seguimiento "
+            "de insumos, control operativo.",
 
             "*Laboratorio / produccion:* disposicion para tareas de registro, "
             "control, observacion, preparacion, seguimiento de protocolos y "
@@ -508,10 +509,10 @@ PROFILES: dict[str, CVProfile] = {
         fortalezas=(
             "Pensamiento analitico.",
             "Observacion detallada.",
-            "Deteccion de errores y desviaciones.",
+            "Deteccion de desviaciones e inconsistencias.",
             "Capacidad para seguir y mejorar procesos.",
-            "Aprendizaje autodidacta.",
-            "Buena respuesta ante presion operativa.",
+            "Aprendizaje continuo.",
+            "Priorizacion en entornos operativos.",
             "Interes fuerte por ciencia, tecnologia y sistemas complejos.",
         ),
     ),

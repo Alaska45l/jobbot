@@ -561,6 +561,13 @@ def get_empresas_aticma_listas_para_envio(
         WHERE e.fuente = 'aticma'
           AND e.fecha_scraping > '2001-01-01T00:00:00Z'
           AND ce.id IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM contactos c
+              WHERE c.empresa_id = e.id
+                AND c.tipo IN ('RRHH', 'General')
+                AND c.email_o_link LIKE '%@%'
+          )
         ORDER BY e.nombre ASC
         LIMIT :limit;
     """

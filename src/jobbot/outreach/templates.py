@@ -24,8 +24,8 @@ sumarme al equipo de {nombre_empresa}.
 
 Mi perfil combina experiencia técnica en desarrollo, QA y soporte IT con \
 capacidad analítica y atención al detalle. Tengo formación en programación, \
-sistemas y ciencias, y me destaco detectando errores, documentando procesos \
-y resolviendo problemas técnicos de forma autónoma.
+sistemas y ciencias, y puedo aportar en documentación técnica, control de \
+calidad funcional y resolución de incidencias.
 
 Adjunto mi CV para que puedan evaluarlo. Quedo a disposición para una \
 entrevista o cualquier consulta.
@@ -40,7 +40,7 @@ de forma directa a {nombre_empresa}.
 
 Cuento con experiencia en soporte IT, desarrollo web, automatización y \
 operaciones. Mi perfil es técnico-analítico: me desenvuelvo bien detectando \
-fallos, ordenando información, documentando procesos y aprendiendo \
+incidencias, ordenando información, documentando procesos y aprendiendo \
 herramientas nuevas rápidamente.
 
 Adjunto mi CV en PDF. Estoy disponible para ampliar información.
@@ -54,9 +54,9 @@ Me postulo de forma espontánea para oportunidades actuales o futuras en \
 su equipo. Soy {nombre_remitente} y tengo experiencia en desarrollo de \
 software, soporte técnico, operaciones y documentación.
 
-Mi fortaleza principal es la capacidad de análisis: encuentro dónde se \
-rompe el sistema, documento el problema con claridad y propongo soluciones. \
-Tengo formación en programación, física y medicina.
+Mi fortaleza principal es la capacidad de análisis: identifico causas de \
+incidencias, documento el problema con claridad y propongo mejoras. \
+Tengo formación en programación, física y ciencias de la salud.
 
 Adjunto CV. Quedo atenta.
 
@@ -82,7 +82,7 @@ Hola equipo de {nombre_empresa},
 
 Les escribo para dejar mi candidatura directa. Soy {nombre_remitente} \
 y busco integrarme a un equipo técnico donde mi capacidad de análisis, \
-detección de errores y resolución de problemas tengan aplicación real.
+control de calidad funcional y resolución de problemas pueda aportar valor.
 
 Tengo experiencia en desarrollo full-stack, soporte IT, operaciones, \
 QA y automatización. Resido en Mar del Plata y puedo adaptarme a \
@@ -101,7 +101,7 @@ técnico, operaciones y pensamiento analítico.
 
 En experiencias anteriores demostré capacidad para gestionar sistemas, \
 detectar inconsistencias, documentar procesos y resolver problemas \
-técnicos en entornos de presión.
+técnicos en entornos operativos.
 
 Adjunto CV en PDF.
 
@@ -116,8 +116,8 @@ analíticas.
 
 Tengo experiencia en programación (Go, Python, Rust), testing, soporte \
 IT, redes, automatización y documentación. Mi formación incluye \
-programación, física y medicina parcial. Me destaco encontrando \
-problemas antes de que se conviertan en incidentes.
+programación, física y bases de ciencias de la salud. Me destaco por \
+anticipar riesgos operativos y registrar hallazgos con claridad.
 
 Si {nombre_empresa} tiene búsquedas abiertas o futuras, adjunto mi CV.
 
@@ -130,9 +130,9 @@ Soy {nombre_remitente}. Les envío mi CV para postulación espontánea \
 en {nombre_empresa}.
 
 Mi perfil está orientado a resolver problemas concretos: testear \
-sistemas, detectar fallos, documentar procedimientos, ordenar datos \
-y automatizar tareas repetitivas. Tengo experiencia real en entornos \
-operativos y formación técnica autodidacta.
+sistemas, detectar incidencias, documentar procedimientos, ordenar datos \
+y automatizar tareas repetitivas. Tengo experiencia comprobable en entornos \
+operativos y aprendizaje técnico continuo.
 
 Quedo a disposición.
 
@@ -146,8 +146,8 @@ porque creo que mi perfil técnico-analítico puede aportar valor.
 
 Tengo experiencia con desarrollo web, bases de datos, Linux, redes, \
 seguridad aplicada (OWASP), testing y operaciones. Trabajo bien con \
-estructura y procesos, y prefiero resolver problemas técnicos antes \
-que tareas sociales repetitivas.
+estructura y procesos, y puedo aportar en tareas técnicas, operativas \
+y de mejora continua.
 
 Adjunto CV en PDF.
 
@@ -173,9 +173,9 @@ Quería presentarme de forma directa. Soy {nombre_remitente}, con \
 experiencia en desarrollo de software, soporte IT, testing y \
 operaciones.
 
-Si {nombre_empresa} necesita una persona que detecte errores antes \
-que nadie, documente procesos con claridad y resuelva problemas \
-técnicos sin depender de terceros, mi perfil puede resultarles útil.
+Si {nombre_empresa} necesita una persona con criterio técnico, capacidad \
+para documentar procesos con claridad y autonomía para resolver incidencias, \
+mi perfil puede resultarles útil.
 
 Adjunto mi CV para evaluación.
 
@@ -187,10 +187,10 @@ Estimados/as,
 Mi nombre es {nombre_remitente}. Me postulo de forma directa a \
 {nombre_empresa}.
 
-Mi experiencia combina trabajo operativo real con formación en \
+Mi experiencia combina trabajo operativo con formación en \
 desarrollo de software, sistemas, ciencias y seguridad aplicada. \
 Me destaco en detección de patrones, resolución de problemas, \
-documentación clara y aprendizaje autodidacta.
+documentación clara y aprendizaje continuo.
 
 Adjunto CV. Quedo atenta a una respuesta.
 
@@ -201,8 +201,4 @@ FIRMA_TEMPLATE: str = """\
 {nombre_remitente}
 Mar del Plata, Buenos Aires
 Email: {email_remitente}
-Web: {github_user}.github.io/  |  linkedin.com/in/{linkedin_user}
-
-PD: Este correo y su adjunto fueron generados con JobBot, \
-una herramienta de automatización de búsqueda laboral que desarrollé en Python. \
-Podés ver el código en: github.com/{github_user}/jobbot"""
+Web: {github_user}.github.io/"""

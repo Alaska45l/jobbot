@@ -1,24 +1,9 @@
-// cv_ciencia.typ — Perfil Calidad / Laboratorio / Ciencia Aplicada
+// cv_ciencia.typ — Perfil Control de Calidad / Laboratorio / Ciencia Aplicada
 // Diseno profesional: foto con esquinas redondeadas, secciones con linea, sin emojis.
 #set document(title: "CV - {{ NOMBRE }}")
 #set page(
   paper: "a4",
   margin: (top: 1.2cm, bottom: 1.6cm, left: 1.4cm, right: 1.4cm),
-  footer: context {
-    let pg = counter(page).get().first()
-    if pg == counter(page).final().first() {
-      align(center,
-        block(
-          width: 100%,
-          inset: (y: 4pt),
-          fill: rgb("#2D5F5D"),
-          text(8pt, fill: white, weight: "bold")[
-            CV generado dinamicamente con *JobBot* · #link("https://github.com/alaska45l/jobbot")[github.com/alaska45l/jobbot]
-          ]
-        )
-      )
-    }
-  }
 )
 #set text(font: "IBM Plex Sans", size: 9pt, fill: rgb("#1a1a1a"))
 #set par(justify: true, leading: 0.55em)
@@ -76,14 +61,6 @@
 #section[Perfil Profesional]
 
 {{ SUMMARY }}
-
-// ================================================================
-// ENFOQUE PARA LA EMPRESA
-// ================================================================
-
-#section[Enfoque para #text(weight: "bold")[{{ EMPRESA }}]]
-
-{{ PARRAFO_EMPRESA }}
 
 // ================================================================
 // EXPERIENCIA PROFESIONAL

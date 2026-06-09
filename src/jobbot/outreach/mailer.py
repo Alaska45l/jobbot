@@ -47,7 +47,6 @@ class ConfigSMTP:
     password:      str
     sender_name:   str
     github_user:   str
-    linkedin_user: str
 
     @classmethod
     def from_env(cls) -> "ConfigSMTP":
@@ -65,7 +64,6 @@ class ConfigSMTP:
             password=os.environ["SMTP_PASS"],
             sender_name=os.getenv("SENDER_NAME", "Alaska"),
             github_user=os.getenv("GITHUB_USER", "tu-usuario"),
-            linkedin_user=os.getenv("LINKEDIN_USER", "tu-perfil"),
         )
 
 
@@ -302,7 +300,6 @@ async def _construir_email(
         nombre_remitente=config.sender_name,
         email_remitente=config.user,
         github_user=config.github_user,
-        linkedin_user=config.linkedin_user,
     )
 
     template_idx = _seleccionar_indice_template(nombre_empresa, asuntos_usados)

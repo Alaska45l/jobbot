@@ -75,7 +75,7 @@ async def fase_scrape(
     Scrapea los sitios web de las empresas ATICMA pendientes.
     Usa el motor de scraping existente para navegación stealth.
     """
-    stats = {"scrapeadas": 0, "sin_sitio": 0, "errores": 0}
+    stats = {"scrapeadas": 0, "fallback_json": 0, "sin_sitio": 0, "errores": 0}
 
     pendientes = await asyncio.to_thread(get_empresas_aticma_pendientes, 200)
     if not pendientes:
@@ -90,11 +90,75 @@ async def fase_scrape(
         estado.scraping_total = total
         estado.scraping_procesados = 0
 
-    # Import lazy para evitar cargar Playwright si no se necesita
+    async def _usar_datos_json(empresa_row, motivo: str) -> None:
+        """Marca la empresa como procesada usando solo los datos curados ATICMA."""
+        empresa_id = empresa_row["id"]
+        nombre = empresa_row["nombre"]
+        dominio = empresa_row["dominio"]
+        desc_aticma = empresa_row["descripcion_aticma"] or ""
+        perfil_cv = route_company_to_cv(desc_aticma, nombre)
+        puesto = derive_puesto_objetivo(perfil_cv)
+        score = int(empresa_row["score"] or 55)
+
+        await asyncio.to_thread(
+            update_empresa_scraped_data,
+            empresa_id,
+            keywords_scraped="[]",
+            descripcion_scraped=desc_aticma,
+            tiene_vacantes=False,
+            perfil_cv=perfil_cv,
+            score=score,
+        )
+
+        if motivo == "sin_sitio":
+            stats["sin_sitio"] += 1
+        else:
+            stats["fallback_json"] += 1
+
+        if estado:
+            estado.upsert_scraping_row(dominio, score, perfil_cv, "JSON")
+            estado.scraping_procesados += 1
+
+        logger.info(
+            "ATICMA fallback JSON | empresa=%s | dominio=%s | motivo=%s | "
+            "perfil=%s | puesto=%s",
+            nombre, dominio, motivo, perfil_cv, puesto,
+        )
+
+    # Import lazy para evitar cargar Playwright si no se necesita.
+    # Si no está disponible, no bloquea la campaña: usa el JSON curado.
     try:
         from jobbot.scraper.engine import scrape_dominio
     except ImportError:
-        logger.error("No se pudo importar scraper.engine — ¿Playwright instalado?")
+        logger.error(
+            "No se pudo importar scraper.engine — usando fallback JSON ATICMA."
+        )
+        for empresa_row in pendientes:
+            if estado:
+                estado.target = empresa_row["nombre"]
+                estado.upsert_scraping_row(
+                    empresa_row["dominio"], 0, "–", "Scrapeando"
+                )
+            try:
+                await _usar_datos_json(empresa_row, "scraper_no_disponible")
+            except Exception as exc:
+                logger.error(
+                    "ATICMA fallback JSON error | empresa=%s | %s: %s",
+                    empresa_row["nombre"], type(exc).__name__, str(exc)[:200],
+                )
+                stats["errores"] += 1
+                if estado:
+                    estado.upsert_scraping_row(
+                        empresa_row["dominio"], 0, "–", "Error"
+                    )
+                    estado.scraping_procesados += 1
+        if estado:
+            estado.target = "—"
+            estado.fase_actual = (
+                f"ATICMA scraping completo: {stats['scrapeadas']} OK, "
+                f"{stats['fallback_json']} fallback JSON, "
+                f"{stats['sin_sitio']} sin sitio, {stats['errores']} errores"
+            )
         return stats
 
     sem = asyncio.Semaphore(concurrencia)
@@ -111,27 +175,7 @@ async def fase_scrape(
                 estado.upsert_scraping_row(dominio, 0, "–", "Scrapeando")
 
             try:
-                desc_aticma = empresa_row["descripcion_aticma"] or ""
-                perfil_cv = route_company_to_cv(desc_aticma, nombre)
-                puesto = derive_puesto_objetivo(perfil_cv)
-                score = int(empresa_row["score"] or 55)
-
-                await asyncio.to_thread(
-                    update_empresa_scraped_data,
-                    empresa_id,
-                    keywords_scraped="",
-                    descripcion_scraped=desc_aticma,
-                    tiene_vacantes=False,
-                    perfil_cv=perfil_cv,
-                )
-                stats["sin_sitio"] += 1
-                if estado:
-                    estado.upsert_scraping_row(dominio, score, perfil_cv, "OK")
-                    estado.scraping_procesados += 1
-                logger.info(
-                    "ATICMA sin sitio | empresa=%s | perfil=%s | puesto=%s",
-                    nombre, perfil_cv, puesto,
-                )
+                await _usar_datos_json(empresa_row, "sin_sitio")
             except Exception as exc:
                 logger.error(
                     "ATICMA scrape error | empresa=%s | %s: %s",
@@ -153,10 +197,7 @@ async def fase_scrape(
                 html = await scrape_dominio(dominio)
                 if not html:
                     logger.warning("ATICMA: HTML vacío | empresa=%s", nombre)
-                    stats["errores"] += 1
-                    if estado:
-                        estado.upsert_scraping_row(dominio, 0, "–", "Error")
-                        estado.scraping_procesados += 1
+                    await _usar_datos_json(empresa_row, "html_vacio")
                     return
 
                 # Analizar el HTML con el extractor
@@ -202,18 +243,31 @@ async def fase_scrape(
                     "ATICMA scrape error | empresa=%s | %s: %s",
                     nombre, type(exc).__name__, str(exc)[:200],
                 )
-                stats["errores"] += 1
-                if estado:
-                    estado.upsert_scraping_row(dominio, 0, "–", "Error")
-                    estado.scraping_procesados += 1
+                try:
+                    await _usar_datos_json(
+                        empresa_row, f"{type(exc).__name__}"
+                    )
+                except Exception as fallback_exc:
+                    logger.error(
+                        "ATICMA fallback JSON error | empresa=%s | %s: %s",
+                        nombre,
+                        type(fallback_exc).__name__,
+                        str(fallback_exc)[:200],
+                    )
+                    stats["errores"] += 1
+                    if estado:
+                        estado.upsert_scraping_row(dominio, 0, "–", "Error")
+                        estado.scraping_procesados += 1
 
     # Ejecutar scraping en paralelo con límite de concurrencia
     tasks = [_scrape_one(emp) for emp in pendientes]
     await asyncio.gather(*tasks, return_exceptions=True)
 
     if estado:
+        estado.target = "—"
         estado.fase_actual = (
             f"ATICMA scraping completo: {stats['scrapeadas']} OK, "
+            f"{stats['fallback_json']} fallback JSON, "
             f"{stats['sin_sitio']} sin sitio, {stats['errores']} errores"
         )
     logger.info("ATICMA scraping completo: %s", stats)
@@ -279,7 +333,11 @@ async def fase_mail(
         nombre = empresa["nombre"]
         dominio = empresa["dominio"]
         perfil_cv = empresa["perfil_cv"] or "CV_IT_QA"
-        rubro = empresa["rubro"]
+        rubro = (
+            empresa["rubro"]
+            or empresa["descripcion_scraped"]
+            or empresa["descripcion_aticma"]
+        )
         metricas["procesadas"] += 1
 
         if estado:
@@ -449,7 +507,8 @@ async def pipeline_aticma(
     estado.fase_actual = (
         f"ATICMA completo | "
         f"Import: {import_stats['imported']} | "
-        f"Scrape: {scrape_stats['scrapeadas']} OK | "
+        f"Scrape: {scrape_stats['scrapeadas']} OK, "
+        f"{scrape_stats['fallback_json']} JSON | "
         f"Mail: {mail_stats['enviadas']} enviados"
     )
     logger.info("=== Pipeline ATICMA finalizado ===")

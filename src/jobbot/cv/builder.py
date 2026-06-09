@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -27,12 +28,10 @@ PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 TEMPLATE_DIR: Final[Path] = Path(__file__).parent / "templates"
 LEGACY_TEMPLATE_PATH: Final[Path] = PROJECT_ROOT / "cvs" / "template.typ"
 
-# Marcadores textuales que deben existir en la plantilla Typst.
-# Se reemplazan con str.replace() — simple y determinista.
-_MARKER_EMPRESA:  Final[str] = "{{ EMPRESA }}"
-_MARKER_KEYWORDS: Final[str] = "{{ KEYWORDS }}"
-_MARKER_PUESTO:   Final[str] = "{{ PUESTO_OBJETIVO }}"
-_MARKER_PARRAFO:  Final[str] = "{{ PARRAFO_EMPRESA }}"
+# Marcadores textuales que se reemplazan con str.replace().
+_UNREPLACED_MARKER_RE: Final[re.Pattern[str]] = re.compile(
+    r"\{\{\s*[A-Z_]+\s*\}\}"
+)
 
 # Timeout máximo para que typst termine la compilación (segundos).
 _COMPILE_TIMEOUT_S: Final[float] = 30.0
@@ -213,13 +212,12 @@ async def compilar_cv_dinamico(
         },
     )
 
-    # Validación superficial: advertir si quedó algún marcador sin reemplazar
-    for marker in (_MARKER_EMPRESA, _MARKER_KEYWORDS):
-        if marker in template_renderizado:
-            logger.warning(
-                "Marcador '%s' no fue reemplazado en la plantilla | empresa='%s'",
-                marker, nombre_empresa,
-            )
+    # Validación superficial: advertir si quedó algún marcador sin reemplazar.
+    for marker in sorted(set(_UNREPLACED_MARKER_RE.findall(template_renderizado))):
+        logger.warning(
+            "Marcador '%s' no fue reemplazado en la plantilla | empresa='%s'",
+            marker, nombre_empresa,
+        )
 
     # Compilación en directorio temporal (autodestruct al salir del bloque)
     with tempfile.TemporaryDirectory(prefix="jobbot_cv_") as tmp_dir:

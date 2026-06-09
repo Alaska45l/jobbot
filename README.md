@@ -142,7 +142,6 @@ SMTP_PASS="tu_app_password_de_16_caracteres"
 # Perfil del Remitente
 SENDER_NAME="Tu Nombre"
 GITHUB_USER="TuUsuarioGitHub"
-LINKEDIN_USER="TuUsuarioLinkedIn"
 ```
 
 ### 4. Dependencias Externas del Sistema
@@ -291,9 +290,3 @@ python -m py_compile src/jobbot/cli.py src/jobbot/scoring/engine.py
 | TUI | Rich (`Live`, `Layout`, `Panel`, mascota animada) |
 | Env | python-dotenv |
 | Search | `ddgs` (DuckDuckGo search) |
-
----
-
-<div align="center">
-  <sub>CV dynamically generated with JobBot · <a href="https://github.com/alaska45l/jobbot">github.com/alaska45l/jobbot</a></sub>
-</div>

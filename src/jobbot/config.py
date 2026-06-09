@@ -18,7 +18,6 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 SENDER_NAME:   str = os.getenv("SENDER_NAME",   "Alaska")
 GITHUB_USER:   str = os.getenv("GITHUB_USER",   "tu-usuario")
-LINKEDIN_USER: str = os.getenv("LINKEDIN_USER", "tu-perfil")
 
 # ---------------------------------------------------------------------------
 # SMTP — leídas en tiempo de importación.

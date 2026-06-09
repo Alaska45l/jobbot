@@ -6,7 +6,7 @@
 
 = {{ NOMBRE }}
 #text(fill: accent, weight: "bold")[{{ TITULO }}]
-
+#v(-2pt)
 {{ UBICACION }} | {{ EMAIL }} | {{ PORTFOLIO }} | {{ GITHUB }}
 
 == Perfil

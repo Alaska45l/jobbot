@@ -32,7 +32,7 @@
     text(24pt, weight: "bold", fill: rgb("#1a1a1a"))[{{ NOMBRE }}]
     v(-2pt)
     text(11pt, fill: accent)[{{ TITULO }}]
-    v(4pt)
+    v(1pt)
     text(8.5pt, fill: light-gray)[
       *Mail:* #link("mailto:{{ EMAIL }}")[{{ EMAIL }}]
       #h(8pt) *Tel:* {{ TELEFONO }}
@@ -61,6 +61,14 @@
 #section[Perfil Profesional]
 
 {{ SUMMARY }}
+
+// ================================================================
+// PROYECTOS DESTACADOS
+// ================================================================
+
+#section[Proyectos Destacados]
+
+{{ PROJECTS }}
 
 // ================================================================
 // EXPERIENCIA PROFESIONAL

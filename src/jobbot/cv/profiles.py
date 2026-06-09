@@ -27,12 +27,13 @@ class CVProfile:
     idiomas: str
     fortalezas: tuple[str, ...]
     puesto_objetivo: str
+    projects: tuple[str, ...] = ()
 
 
 CONTACT = {
     "nombre": "Alaska Elaina Gonzalez",
     "ubicacion": "Zona Centro, Mar del Plata, PBA",
-    "email": "AlaskaGonzalez\\@outlook.com",
+    "email": "alaska45lgon\\@gmail.com",
     "telefono": "(2262) 63-3652",
     "portfolio": "alaska45l.github.io",
     "github": "github.com/alaska45l",
@@ -46,23 +47,32 @@ PROFILES: dict[str, CVProfile] = {
         title="Perfil Tecnico IT / QA / Soporte",
         puesto_objetivo="QA Tester / Soporte IT / Desarrolladora Jr",
         summary=(
-            "Orientacion a *QA, soporte IT, troubleshooting, desarrollo web y "
-            "analisis de sistemas*. Cuento con experiencia practica en "
-            "diagnostico de hardware/software, instalacion y mantenimiento de "
-            "sistemas operativos, soporte a usuarios, resolucion de incidentes "
-            "y documentacion de problemas tecnicos.\n\n"
-            "Ademas, desarrollo proyectos independientes con tecnologias "
-            "modernas como *Go, PostgreSQL, SvelteKit, TypeScript, Tailwind "
-            "CSS, Rust, Tauri, Python y Cloudflare Workers/Pages*, lo que me "
-            "permite comprender los sistemas desde varias capas: frontend, "
-            "backend, infraestructura, seguridad, despliegue y experiencia de "
-            "usuario.\n\n"
-            "Me destaco por mi pensamiento analitico, capacidad para detectar "
-            "inconsistencias, reproducir errores, documentar incidencias y aprender "
-            "herramientas nuevas con rapidez. Busco incorporarme a "
-            "equipos de *QA, soporte tecnico, infraestructura IT, software a "
-            "medida, integraciones, sistemas de gestion, seguridad informatica "
-            "o cloud*."
+            "Perfil tecnico hibrido orientado a *QA manual, soporte IT, "
+            "troubleshooting, documentacion y desarrollo web junior*. Puedo "
+            "entender un sistema desde el usuario, la operacion y el codigo, "
+            "con foco en detectar fallos, reproducir problemas y dejar "
+            "registros claros para que el equipo pueda resolverlos.\n\n"
+            "Cuento con experiencia practica en diagnostico de hardware y "
+            "software, soporte a usuarios, sistemas POS, Linux/Windows, redes "
+            "basicas, desarrollo web y revision funcional de aplicaciones. "
+            "Trabajo con herramientas como *Go, PostgreSQL, SvelteKit, "
+            "TypeScript, Python, Rust/Tauri y Cloudflare*, priorizando su uso "
+            "en proyectos concretos y no como una lista aislada de tecnologias.\n\n"
+            "Busco incorporarme a equipos donde pueda aportar en *QA, soporte "
+            "tecnico, operaciones IT, documentacion, desarrollo junior o mejora "
+            "de procesos tecnicos*."
+        ),
+        projects=(
+            "*JobBot -- herramienta personal para organizar y seguir postulaciones laborales:* "
+            "pipeline en Python con SQLite, generacion de CVs en Typst, "
+            "clasificacion por perfil y panel TUI para controlar el estado del proceso.",
+            "*Sistemas web full-stack -- Invariant.ar y Elixir Exclusive:* "
+            "proyectos propios con Go, PostgreSQL, SvelteKit, TypeScript y "
+            "Cloudflare, orientados a autenticacion, CRUD, despliegue y "
+            "organizacion de datos.",
+            "*Herramientas desktop -- Invariant Flasher, Probe.tex e Inercia:* "
+            "apps y utilidades para diagnostico, operacion local y flujos "
+            "reproducibles con foco en soporte tecnico.",
         ),
         experience=(
             # Job 1
@@ -72,14 +82,13 @@ PROFILES: dict[str, CVProfile] = {
             "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
             "[Desarrolladora / QA / Soporte tecnico independiente "
             "\\u{00B7} Necochea / Mar del Plata]\n\n"
-            "- Desarrollo de sistemas web full-stack utilizando "
+            "- Desarrollo de sistemas web y herramientas propias utilizando "
             "*Go, PostgreSQL, SvelteKit, TypeScript y Tailwind CSS*.\n"
-            "- Construccion de herramientas de escritorio con "
-            "*Rust y Tauri*, orientadas a diagnostico, automatizacion "
-            "y operacion local.\n"
             "- Pruebas funcionales de aplicaciones propias: deteccion "
             "de bugs, revision de flujos, validacion de errores y "
             "documentacion de comportamiento esperado.\n"
+            "- Construccion de herramientas de escritorio con *Rust y Tauri*, "
+            "orientadas a diagnostico y operacion local.\n"
             "- Auditoria tecnica de plataformas web, con foco en "
             "vulnerabilidades logicas, permisos, autenticacion, APIs "
             "y exposicion de informacion.\n"
@@ -87,13 +96,31 @@ PROFILES: dict[str, CVProfile] = {
             "critica de permisos tipo *IDOR/BOLA* en una plataforma de "
             "comercio electronico.\n"
             "- Despliegue y mantenimiento de aplicaciones utilizando "
-            "*Cloudflare Pages, Workers y herramientas de automatizacion "
-            "con IA*.\n"
-            "- Uso de agentes y herramientas como *OpenAI Codex, Claude "
-            "Code, OpenCode y Google Antigravity* para revision de codigo, "
-            "debugging y mejora de flujos tecnicos.",
+            "*Cloudflare Pages y Workers*.\n"
+            "- Uso de IA aplicada como apoyo para revision de codigo, "
+            "debugging, generacion de tests y documentacion tecnica.",
 
             # Job 2
+            "#grid(columns: (1fr, auto), "
+            "text(10pt, weight: \"bold\")[Falucho / La MilaPizza / Tres Picos], "
+            "text(9pt, fill: rgb(\"#555555\"))[12/2023 -- 01/2026])\n"
+            "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
+            "[Operaciones, caja, sistemas POS y soporte interno "
+            "\\u{00B7} Necochea / Mar del Plata]\n\n"
+            "- Uso avanzado del sistema de gestion y punto de venta "
+            "*Morphi*.\n"
+            "- Carga, modificacion y eliminacion de productos, precios, "
+            "descuentos y reportes.\n"
+            "- Gestion de caja, facturacion electronica AFIP, arqueos "
+            "y reportes diarios.\n"
+            "- Control de stock, insumos, mermas y coordinacion de "
+            "pedidos a proveedores.\n"
+            "- Resolucion de incidentes tecnicos con terminales POS, "
+            "impresoras fiscales, routers y sistemas de facturacion.\n"
+            "- Capacitacion de personal en uso de sistemas internos "
+            "y flujos operativos.",
+
+            # Job 3
             "#grid(columns: (1fr, auto), "
             "text(10pt, weight: \"bold\")[Soporte Tecnico IT Freelance], "
             "text(9pt, fill: rgb(\"#555555\"))[2019 -- 2025])\n"
@@ -113,26 +140,6 @@ PROFILES: dict[str, CVProfile] = {
             "de rendimiento, presupuesto y uso.\n"
             "- Explicacion clara de problemas tecnicos a usuarios no "
             "tecnicos.",
-
-            # Job 3
-            "#grid(columns: (1fr, auto), "
-            "text(10pt, weight: \"bold\")[Falucho / La MilaPizza / Tres Picos], "
-            "text(9pt, fill: rgb(\"#555555\"))[12/2023 -- 01/2026])\n"
-            "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
-            "[Operaciones, caja, sistemas POS y soporte interno "
-            "\\u{00B7} Necochea / Mar del Plata]\n\n"
-            "- Uso avanzado del sistema de gestion y punto de venta "
-            "*Morphi*.\n"
-            "- Carga, modificacion y eliminacion de productos, precios, "
-            "descuentos y reportes.\n"
-            "- Gestion de caja, facturacion electronica AFIP, arqueos "
-            "y reportes diarios.\n"
-            "- Control de stock, insumos, mermas y coordinacion de "
-            "pedidos a proveedores.\n"
-            "- Resolucion de incidentes tecnicos con terminales POS, "
-            "impresoras fiscales, routers y sistemas de facturacion.\n"
-            "- Capacitacion de personal en uso de sistemas internos "
-            "y flujos operativos.",
         ),
         education=(
             # Fisica
@@ -163,28 +170,23 @@ PROFILES: dict[str, CVProfile] = {
             "avanzada.]",
         ),
         skills=(
-            "*QA / Testing:* testing funcional, reproduccion de bugs, "
-            "documentacion de errores, revision de flujos, edge cases, "
-            "validacion de APIs, analisis de permisos.",
+            "*Foco principal:* QA manual, soporte IT, troubleshooting, "
+            "documentacion de incidencias, desarrollo web junior y mejora de procesos.",
 
-            "*Soporte IT:* Windows 10/11, Windows Server, Linux, instalacion "
-            "y configuracion de sistemas, diagnostico de hardware/software, "
-            "redes TCP/IP, recuperacion de datos, hardening basico.",
+            "*Stack practico:* Go, PostgreSQL, SvelteKit, TypeScript, Python, "
+            "Rust/Tauri, SQL, HTML, CSS, JavaScript y Git.",
 
-            "*Backend:* Go, Fiber, PostgreSQL, SQL, Python, Rust, APIs REST, "
-            "autenticacion JWT, WebAuthn, AWS SDK for Go.",
+            "*Soporte e infraestructura:* Windows 10/11, Windows Server, "
+            "Linux, redes TCP/IP, instalacion de sistemas, diagnostico de "
+            "hardware/software, recuperacion de datos y hardening basico.",
 
-            "*Frontend:* SvelteKit, Svelte 5, TypeScript, Tailwind CSS, Vite, "
-            "HTML, CSS, JavaScript.",
+            "*Testing y documentacion:* reproduccion de bugs, casos de prueba, "
+            "revision de flujos, validacion de APIs, analisis de permisos y "
+            "registro claro de hallazgos.",
 
-            "*Cloud / DevOps:* Cloudflare Pages, Cloudflare Workers, Git, "
-            "GitHub, despliegue web, configuracion de entornos.",
-
-            "*Seguridad informatica:* OWASP Top 10, IDOR/BOLA, Burp Suite, "
-            "analisis de cabeceras HTTP, CVSS, divulgacion responsable.",
-
-            "*Automatizacion e IA:* OpenAI Codex, Claude Code, OpenCode, "
-            "prompting tecnico, automatizacion de flujos con agentes.",
+            "*Complementario:* seguridad web, OWASP Top 10, Cloudflare "
+            "Pages/Workers, despliegue web e IA aplicada a revision de codigo, "
+            "debugging, tests y documentacion tecnica.",
         ),
         idiomas=(
             "Ingles nivel funcional alto. Lectura fluida de documentacion "
@@ -208,25 +210,52 @@ PROFILES: dict[str, CVProfile] = {
         title="Back Office Tecnico / E-commerce / Operaciones Digitales",
         puesto_objetivo="Back Office / Operaciones E-commerce / Soporte de Gestion",
         summary=(
-            "Orientacion a *operaciones digitales, back office tecnico, "
-            "e-commerce, control de datos, sistemas de gestion, stock y "
-            "soporte interno*. Cuento con experiencia en operacion de "
-            "sistemas POS, facturacion electronica, carga y control de "
-            "productos, reportes, inventario, coordinacion de pedidos, "
-            "resolucion de incidentes operativos y mejora de procesos.\n\n"
-            "Mi experiencia combina trabajo real en operaciones comerciales "
-            "con conocimientos tecnicos en software, bases de datos, "
-            "automatizacion, sistemas web y herramientas digitales. Esto me "
-            "permite entender tanto la logica del negocio como la estructura "
-            "tecnica que sostiene sus procesos.\n\n"
-            "Busco incorporarme a empresas de *e-commerce, CRM, "
-            "logistica-stock, sistemas de gestion, paginas web, "
-            "automatizacion, software a medida, marketing digital operativo "
-            "o consultoria IT*, en roles donde pueda aportar orden, "
-            "precision, analisis de informacion y mejora de procesos internos."
+            "Orientacion a *back office tecnico, operaciones digitales, "
+            "e-commerce, control de datos, documentacion y soporte de gestion*. "
+            "Cuento con experiencia real en sistemas POS, facturacion "
+            "electronica, carga y control de productos, reportes, inventario, "
+            "coordinacion de pedidos y resolucion de incidencias operativas.\n\n"
+            "Mi perfil combina trabajo operativo con base tecnica en software, "
+            "bases de datos, herramientas web y soporte IT. Esto me permite "
+            "entender tanto la logica diaria del negocio como los sistemas que "
+            "sostienen sus procesos.\n\n"
+            "Busco incorporarme a equipos donde pueda aportar *orden, precision, "
+            "control de informacion, documentacion clara, soporte administrativo "
+            "tecnico y mejora de procesos internos*."
+        ),
+        projects=(
+            "*JobBot -- herramienta personal para organizar y seguir postulaciones laborales:* "
+            "pipeline en Python con SQLite, generacion de CVs en Typst, "
+            "clasificacion por perfil y panel TUI para controlar el estado del proceso.",
+            "*Sistemas web -- Invariant.ar y Elixir Exclusive:* proyectos "
+            "propios con Go, PostgreSQL, SvelteKit y TypeScript para organizar "
+            "datos, flujos CRUD, autenticacion y despliegue web.",
+            "*Herramientas de soporte operativo:* scripts y utilidades para "
+            "ordenar informacion, revisar datos y documentar procesos; ejemplos: "
+            "Invariant Flasher, Probe.tex e Inercia.",
         ),
         experience=(
-            # Job 1 — Falucho (first for backoffice)
+            # Job 1 — Proyectos independientes
+            "#grid(columns: (1fr, auto), "
+            "text(10pt, weight: \"bold\")[Proyectos independientes de desarrollo y organizacion digital], "
+            "text(9pt, fill: rgb(\"#555555\"))[2024 -- Presente])\n"
+            "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
+            "[Operaciones digitales / Documentacion / Web "
+            "\\u{00B7} Necochea / Mar del Plata]\n\n"
+            "- Desarrollo de sistemas web y herramientas digitales con "
+            "*Go, PostgreSQL, SvelteKit, TypeScript y Tailwind CSS*.\n"
+            "- Organizacion de datos, flujos CRUD, formularios y reportes "
+            "para proyectos propios.\n"
+            "- Revision de flujos web, formularios, autenticacion, errores "
+            "funcionales y experiencia de usuario.\n"
+            "- Organizacion de informacion tecnica y operativa para proyectos "
+            "digitales.\n"
+            "- Despliegue de sitios y aplicaciones mediante *Cloudflare Pages "
+            "y Workers*.\n"
+            "- Uso de IA aplicada como apoyo para documentacion, revision de "
+            "procesos y mejora de textos tecnicos.",
+
+            # Job 2 — Falucho / La MilaPizza / Tres Picos
             "#grid(columns: (1fr, auto), "
             "text(10pt, weight: \"bold\")[Falucho / La MilaPizza / Tres Picos], "
             "text(9pt, fill: rgb(\"#555555\"))[12/2023 -- 01/2026])\n"
@@ -251,27 +280,6 @@ PROFILES: dict[str, CVProfile] = {
             "routers y sistemas internos.\n"
             "- Capacitacion de personal en uso de sistemas, carga de pedidos "
             "y flujos operativos.",
-
-            # Job 2 — Proyectos independientes
-            "#grid(columns: (1fr, auto), "
-            "text(10pt, weight: \"bold\")[Proyectos independientes de desarrollo y automatizacion], "
-            "text(9pt, fill: rgb(\"#555555\"))[2024 -- Presente])\n"
-            "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
-            "[Operaciones digitales / Automatizacion / Web "
-            "\\u{00B7} Necochea / Mar del Plata]\n\n"
-            "- Desarrollo de sistemas web y herramientas digitales con "
-            "*Go, PostgreSQL, SvelteKit, TypeScript y Tailwind CSS*.\n"
-            "- Creacion de automatizaciones orientadas a reducir tareas "
-            "repetitivas y ordenar informacion.\n"
-            "- Uso de herramientas de IA como *OpenAI Codex, Claude Code, "
-            "OpenCode y Google Antigravity* para documentacion, analisis y "
-            "mejora de procesos.\n"
-            "- Revision de flujos web, formularios, autenticacion, errores "
-            "funcionales y experiencia de usuario.\n"
-            "- Organizacion de informacion tecnica y operativa para proyectos "
-            "digitales.\n"
-            "- Despliegue de sitios y aplicaciones mediante *Cloudflare Pages "
-            "y Workers*.",
 
             # Job 3 — Soporte IT
             "#grid(columns: (1fr, auto), "
@@ -320,26 +328,21 @@ PROFILES: dict[str, CVProfile] = {
             "programacion, sistemas, redes y herramientas digitales.]",
         ),
         skills=(
-            "*E-commerce / Operaciones:* carga de productos, control de "
-            "precios, revision de publicaciones, catalogo digital, stock, "
-            "reportes, pedidos, control de inconsistencias.",
+            "*Foco principal:* back office tecnico, operaciones digitales, "
+            "control de datos, documentacion, soporte de gestion y mejora de procesos.",
 
-            "*Sistemas de gestion:* POS Morphi, facturacion AFIP, reportes "
-            "de ventas, control de caja, carga de insumos, inventario y "
-            "proveedores.",
+            "*Operaciones y gestion:* POS Morphi, facturacion AFIP, caja, "
+            "stock, pedidos, proveedores, reportes y control de inconsistencias.",
 
             "*Datos y documentacion:* Excel avanzado, tablas dinamicas, "
-            "formulas, control de datos, reportes operativos, documentacion "
-            "de procesos.",
+            "formulas, control de informacion, reportes operativos y "
+            "documentacion de procedimientos.",
 
-            "*Herramientas digitales:* Google Workspace, Microsoft Office, "
-            "GitHub, Cloudflare, herramientas web, automatizacion con IA.",
+            "*Stack practico:* Google Workspace, Microsoft Office, GitHub, "
+            "Cloudflare, HTML, CSS, JavaScript, SvelteKit, TypeScript, Go y PostgreSQL.",
 
-            "*Web / IT:* HTML, CSS, JavaScript, SvelteKit, TypeScript, Go, "
-            "PostgreSQL, soporte tecnico, troubleshooting, redes basicas.",
-
-            "*IA y automatizacion:* prompting tecnico, agentes de codigo, "
-            "automatizacion de flujos repetitivos, revision de procesos.",
+            "*Complementario:* soporte tecnico, troubleshooting, redes basicas "
+            "e IA aplicada a documentacion, revision de procesos y mejora de textos.",
         ),
         idiomas=(
             "Ingles nivel funcional alto. Lectura fluida de documentacion "
@@ -364,28 +367,56 @@ PROFILES: dict[str, CVProfile] = {
         title="Control de Calidad / Laboratorio / Ciencia Aplicada",
         puesto_objetivo="Control de Calidad / Auxiliar de Laboratorio / Documentacion Tecnica",
         summary=(
-            "Orientacion a *control de calidad, laboratorio, documentacion tecnica, "
-            "control de procesos, ciencia aplicada y analisis de "
-            "informacion*. Cuento con formacion universitaria en Fisica, "
-            "cursada previa en Medicina y base tecnica en Desarrollo de "
-            "Aplicaciones Informaticas, junto con experiencia laboral en "
-            "operaciones, stock, facturacion, sistemas POS, soporte IT y "
-            "resolucion de problemas.\n\n"
-            "Me interesa trabajar en entornos donde se valoren el "
-            "pensamiento analitico, el registro preciso, la observacion, "
-            "la deteccion de desviaciones, el cumplimiento de procedimientos "
-            "y la mejora de procesos. Tengo especial afinidad por areas "
-            "vinculadas a *biotecnologia, green tech, industria alimentaria, "
-            "software de produccion, automatizacion, logistica-stock, "
-            "control de calidad, salud, datos cientificos y sistemas "
-            "tecnicos*.\n\n"
-            "Mi perfil combina base cientifica, criterio tecnico y "
-            "experiencia operativa, lo que me permite adaptarme a tareas de "
-            "control, documentacion, analisis y soporte en entornos "
-            "productivos o tecnologicos."
+            "Orientacion a *Control de calidad, laboratorio, documentacion "
+            "tecnica, control de procesos y analisis de informacion*. Cuento "
+            "con formacion universitaria en Fisica, cursada previa en Medicina "
+            "y base tecnica en Desarrollo de Aplicaciones Informaticas, junto "
+            "con experiencia laboral en operaciones, stock, facturacion, "
+            "sistemas POS, soporte IT y resolucion de problemas.\n\n"
+            "Me interesa trabajar en entornos donde se valoren el pensamiento "
+            "analitico, el registro preciso, la observacion, la deteccion de "
+            "desviaciones, el cumplimiento de procedimientos y la mejora de "
+            "procesos.\n\n"
+            "Mi perfil combina base cientifica, criterio tecnico y experiencia "
+            "operativa. Puedo aportar en tareas de *Control de calidad, "
+            "documentacion, analisis, trazabilidad, soporte de sistemas y "
+            "seguimiento de procesos*."
+        ),
+        projects=(
+            "*JobBot -- herramienta personal para organizar y seguir postulaciones laborales:* "
+            "pipeline en Python con SQLite, generacion de CVs en Typst, "
+            "clasificacion por perfil y panel TUI para controlar el estado del proceso.",
+            "*Sistemas web / paneles de datos -- Invariant.ar y Elixir Exclusive:* "
+            "proyectos propios con Go, PostgreSQL, SvelteKit y TypeScript, "
+            "orientados a ordenar informacion, validar flujos y documentar resultados.",
+            "*Herramientas desktop -- Invariant Flasher, Probe.tex e Inercia:* "
+            "apps y utilidades para diagnostico, operacion local y procedimientos "
+            "reproducibles.",
         ),
         experience=(
-            # Job 1 — Falucho
+            # Job 1 — Proyectos independientes
+            "#grid(columns: (1fr, auto), "
+            "text(10pt, weight: \"bold\")[Proyectos independientes de analisis tecnico y desarrollo], "
+            "text(9pt, fill: rgb(\"#555555\"))[2024 -- Presente])\n"
+            "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
+            "[Analisis de sistemas / Documentacion / Automatizacion "
+            "\\u{00B7} Necochea / Mar del Plata]\n\n"
+            "- Desarrollo de herramientas y sistemas web orientados a "
+            "ordenar informacion, validar procesos y reducir errores "
+            "operativos.\n"
+            "- Trabajo con *Go, PostgreSQL, SvelteKit, TypeScript, Python, "
+            "Rust y Cloudflare*.\n"
+            "- Documentacion de errores, flujos funcionales, procesos "
+            "tecnicos y propuestas de mejora.\n"
+            "- Analisis de seguridad y permisos en plataformas web, "
+            "incluyendo reporte responsable de vulnerabilidad critica tipo "
+            "*IDOR/BOLA*.\n"
+            "- Uso de IA aplicada como apoyo para auditoria, documentacion, "
+            "revision de codigo y analisis de procesos.\n"
+            "- Capacidad para comprender sistemas desde multiples capas: "
+            "usuario, proceso, datos, infraestructura y riesgo.",
+
+            # Job 2 — Falucho / La MilaPizza / Tres Picos
             "#grid(columns: (1fr, auto), "
             "text(10pt, weight: \"bold\")[Falucho / La MilaPizza / Tres Picos], "
             "text(9pt, fill: rgb(\"#555555\"))[12/2023 -- 01/2026])\n"
@@ -409,28 +440,6 @@ PROFILES: dict[str, CVProfile] = {
             "- Capacitacion de personal en procedimientos de carga, uso de "
             "sistema y flujos de trabajo.",
 
-            # Job 2 — Proyectos independientes
-            "#grid(columns: (1fr, auto), "
-            "text(10pt, weight: \"bold\")[Proyectos independientes de analisis tecnico y desarrollo], "
-            "text(9pt, fill: rgb(\"#555555\"))[2024 -- Presente])\n"
-            "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
-            "[Analisis de sistemas / Documentacion / Automatizacion "
-            "\\u{00B7} Necochea / Mar del Plata]\n\n"
-            "- Desarrollo de herramientas y sistemas web orientados a "
-            "ordenar informacion, automatizar procesos y reducir errores "
-            "operativos.\n"
-            "- Trabajo con *Go, PostgreSQL, SvelteKit, TypeScript, Python, "
-            "Rust y Cloudflare*.\n"
-            "- Documentacion de errores, flujos funcionales, procesos "
-            "tecnicos y propuestas de mejora.\n"
-            "- Analisis de seguridad y permisos en plataformas web, "
-            "incluyendo reporte responsable de vulnerabilidad critica tipo "
-            "*IDOR/BOLA*.\n"
-            "- Uso de herramientas de IA para auditoria, documentacion, "
-            "revision de codigo y analisis de procesos.\n"
-            "- Capacidad para comprender sistemas desde multiples capas: "
-            "usuario, proceso, datos, infraestructura y riesgo.",
-
             # Job 3 — Soporte IT
             "#grid(columns: (1fr, auto), "
             "text(10pt, weight: \"bold\")[Soporte Tecnico IT Freelance], "
@@ -449,17 +458,6 @@ PROFILES: dict[str, CVProfile] = {
             "- Configuracion basica de redes, routers y equipos de trabajo.",
         ),
         education=(
-            # Medicina FIRST (most relevant to science profile)
-            "#grid(columns: (1fr, auto), "
-            "text(9.5pt, weight: \"bold\")[Medicina -- Ciclo Basico], "
-            "text(9pt, fill: rgb(\"#555555\"))[2024 -- 2025])\n"
-            "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
-            "[Universidad Nacional de Mar del Plata]\n"
-            "#text(8.5pt)[_Competencias asociadas:_ biologia humana, "
-            "fisiologia, histologia, bioseguridad, terminologia medica, "
-            "lectura cientifica, salud publica y analisis de sistemas "
-            "biologicos.]",
-
             # Fisica
             "#grid(columns: (1fr, auto), "
             "text(9.5pt, weight: \"bold\")[Licenciatura en Fisica], "
@@ -469,6 +467,17 @@ PROFILES: dict[str, CVProfile] = {
             "#text(8.5pt)[_Competencias asociadas:_ pensamiento logico, "
             "modelado de sistemas, analisis cuantitativo, medicion, "
             "abstraccion y resolucion de problemas.]",
+
+            # Medicina
+            "#grid(columns: (1fr, auto), "
+            "text(9.5pt, weight: \"bold\")[Medicina -- Ciclo Basico], "
+            "text(9pt, fill: rgb(\"#555555\"))[2024 -- 2025])\n"
+            "#text(9pt, style: \"italic\", fill: rgb(\"#555555\"))"
+            "[Universidad Nacional de Mar del Plata]\n"
+            "#text(8.5pt)[_Competencias asociadas:_ biologia humana, "
+            "fisiologia, histologia, bioseguridad, terminologia medica, "
+            "lectura cientifica, salud publica y analisis de sistemas "
+            "biologicos.]",
 
             # UNICEN
             "#grid(columns: (1fr, auto), "
@@ -480,27 +489,24 @@ PROFILES: dict[str, CVProfile] = {
             "digitales.]",
         ),
         skills=(
-            "*Ciencia aplicada:* biologia, fisiologia, quimica basica, "
-            "salud, lectura critica de informacion cientifica, terminologia "
-            "medica.",
+            "*Foco principal:* Control de calidad, laboratorio, documentacion "
+            "tecnica, registro preciso, trazabilidad y seguimiento de procesos.",
 
-            "*Control de calidad y procesos:* control de stock, deteccion "
-            "de desvios, documentacion de procesos, reportes, seguimiento "
-            "de insumos, control operativo.",
+            "*Base cientifica:* biologia, fisiologia, quimica basica, salud, "
+            "lectura critica de informacion cientifica y terminologia medica.",
 
-            "*Laboratorio / produccion:* disposicion para tareas de registro, "
-            "control, observacion, preparacion, seguimiento de protocolos y "
-            "trazabilidad.",
+            "*Control de procesos:* control de stock, deteccion de desvios, "
+            "reportes, seguimiento de insumos, control operativo y revision "
+            "de inconsistencias.",
 
-            "*Datos:* Excel avanzado, tablas dinamicas, formulas, control de "
-            "informacion, reportes y revision de inconsistencias.",
+            "*Datos y documentacion:* Excel avanzado, tablas dinamicas, "
+            "formulas, control de informacion, reportes y documentacion de procedimientos.",
 
-            "*Sistemas:* POS Morphi, facturacion AFIP, soporte IT, Windows, "
-            "Linux, redes basicas, troubleshooting.",
+            "*Stack practico:* Python, Go, PostgreSQL, SvelteKit, TypeScript, "
+            "POS Morphi, Windows, Linux, soporte IT y troubleshooting.",
 
-            "*Programacion y automatizacion:* Python, Go, PostgreSQL, "
-            "SvelteKit, TypeScript, herramientas de IA, automatizacion de "
-            "flujos y documentacion tecnica.",
+            "*Complementario:* seguridad web, Cloudflare e IA aplicada a "
+            "documentacion tecnica, revision de procesos y analisis de datos.",
         ),
         idiomas=(
             "Ingles nivel funcional alto. Lectura fluida de documentacion "

@@ -200,6 +200,7 @@ async def compilar_cv_dinamico(
             "PORTFOLIO": CONTACT["portfolio"],
             "GITHUB": CONTACT["github"],
             "SUMMARY": profile.summary,
+            "PROJECTS": _format_bullets(profile.projects),
             "EXPERIENCE": _format_bullets(profile.experience),
             "SKILLS": _format_bullets(profile.skills),
             "EDUCATION": _format_bullets(profile.education),

@@ -383,7 +383,6 @@ async def procesar_envios_pendientes(
         return metricas
 
     logger.info("Empresas aptas: %d", len(empresas))
-    es_primer_envio = True
 
     for empresa in empresas:
         empresa_id = empresa["id"]
@@ -454,7 +453,7 @@ async def procesar_envios_pendientes(
             continue
 
         # Rate limiting — asyncio.sleep no bloquea el loop durante el jitter
-        if not es_primer_envio and not dry_run:
+        if not dry_run:
             sleep_seg = random.randint(SMTP_JITTER_MIN_S, SMTP_JITTER_MAX_S)
             logger.info(
                 "Rate limit: %d seg (~%.1f min)…", sleep_seg, sleep_seg / 60
@@ -468,7 +467,6 @@ async def procesar_envios_pendientes(
                 destinatario, asunto_usado[:60], perfil_cv,
             )
             metricas["enviadas"] += 1
-            es_primer_envio = False
             continue
 
         # _enviar_via_smtp es sync (smtplib) → to_thread para no bloquear
@@ -497,8 +495,6 @@ async def procesar_envios_pendientes(
             )
             logger.warning("✗ Fallo de envío | empresa='%s' | to=%s", nombre, destinatario)
             metricas["errores"] += 1
-
-        es_primer_envio = False
 
     logger.info(
         "=== Campaña finalizada | procesadas=%d | enviadas=%d | "

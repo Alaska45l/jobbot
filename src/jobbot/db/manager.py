@@ -559,6 +559,7 @@ def get_empresas_aticma_listas_para_envio(
             AND ce.fecha_envio >= :cutoff
             AND ce.estado IN ('enviado', 'pendiente')
         WHERE e.fuente = 'aticma'
+          AND e.fecha_scraping > '2001-01-01T00:00:00Z'
           AND ce.id IS NULL
         ORDER BY e.nombre ASC
         LIMIT :limit;

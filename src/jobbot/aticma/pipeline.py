@@ -87,6 +87,8 @@ async def fase_scrape(
     total = len(pendientes)
     if estado:
         estado.fase_actual = f"ATICMA: Scrapeando {total} sitios…"
+        estado.scraping_total = total
+        estado.scraping_procesados = 0
 
     # Import lazy para evitar cargar Playwright si no se necesita
     try:
@@ -104,34 +106,57 @@ async def fase_scrape(
 
         # Empresas sin sitio real (.local) — usar solo datos del JSON
         if dominio.endswith(".local"):
-            desc_aticma = empresa_row["descripcion_aticma"] or ""
-            perfil_cv = route_company_to_cv(desc_aticma, nombre)
-            puesto = derive_puesto_objetivo(perfil_cv)
+            if estado:
+                estado.target = nombre
+                estado.upsert_scraping_row(dominio, 0, "–", "Scrapeando")
 
-            await asyncio.to_thread(
-                update_empresa_scraped_data,
-                empresa_id,
-                keywords_scraped="",
-                descripcion_scraped=desc_aticma,
-                tiene_vacantes=False,
-                perfil_cv=perfil_cv,
-            )
-            stats["sin_sitio"] += 1
-            logger.info(
-                "ATICMA sin sitio | empresa=%s | perfil=%s | puesto=%s",
-                nombre, perfil_cv, puesto,
-            )
+            try:
+                desc_aticma = empresa_row["descripcion_aticma"] or ""
+                perfil_cv = route_company_to_cv(desc_aticma, nombre)
+                puesto = derive_puesto_objetivo(perfil_cv)
+                score = int(empresa_row["score"] or 55)
+
+                await asyncio.to_thread(
+                    update_empresa_scraped_data,
+                    empresa_id,
+                    keywords_scraped="",
+                    descripcion_scraped=desc_aticma,
+                    tiene_vacantes=False,
+                    perfil_cv=perfil_cv,
+                )
+                stats["sin_sitio"] += 1
+                if estado:
+                    estado.upsert_scraping_row(dominio, score, perfil_cv, "OK")
+                    estado.scraping_procesados += 1
+                logger.info(
+                    "ATICMA sin sitio | empresa=%s | perfil=%s | puesto=%s",
+                    nombre, perfil_cv, puesto,
+                )
+            except Exception as exc:
+                logger.error(
+                    "ATICMA scrape error | empresa=%s | %s: %s",
+                    nombre, type(exc).__name__, str(exc)[:200],
+                )
+                stats["errores"] += 1
+                if estado:
+                    estado.upsert_scraping_row(dominio, 0, "–", "Error")
+                    estado.scraping_procesados += 1
             return
 
         async with sem:
             if estado:
                 estado.fase_actual = f"ATICMA: Scrapeando {nombre}…"
+                estado.target = nombre
+                estado.upsert_scraping_row(dominio, 0, "–", "Scrapeando")
 
             try:
                 html = await scrape_dominio(dominio)
                 if not html:
                     logger.warning("ATICMA: HTML vacío | empresa=%s", nombre)
                     stats["errores"] += 1
+                    if estado:
+                        estado.upsert_scraping_row(dominio, 0, "–", "Error")
+                        estado.scraping_procesados += 1
                     return
 
                 # Analizar el HTML con el extractor
@@ -160,6 +185,10 @@ async def fase_scrape(
                     score=70 if profile.has_openings else 55,
                 )
                 stats["scrapeadas"] += 1
+                score = 70 if profile.has_openings else 55
+                if estado:
+                    estado.upsert_scraping_row(dominio, score, perfil_cv, "OK")
+                    estado.scraping_procesados += 1
 
                 logger.info(
                     "ATICMA scrapeada | empresa=%s | techs=%d | services=%d | "
@@ -174,6 +203,9 @@ async def fase_scrape(
                     nombre, type(exc).__name__, str(exc)[:200],
                 )
                 stats["errores"] += 1
+                if estado:
+                    estado.upsert_scraping_row(dominio, 0, "–", "Error")
+                    estado.scraping_procesados += 1
 
     # Ejecutar scraping en paralelo con límite de concurrencia
     tasks = [_scrape_one(emp) for emp in pendientes]
@@ -231,6 +263,8 @@ async def fase_mail(
     empresas = await asyncio.to_thread(
         get_empresas_aticma_listas_para_envio, limit=100,
     )
+    if estado:
+        estado.mail_procesadas = len(empresas)
 
     if not empresas:
         logger.info("ATICMA: No hay empresas listas para envío.")
@@ -239,7 +273,6 @@ async def fase_mail(
         return metricas
 
     logger.info("ATICMA: %d empresas listas para envío", len(empresas))
-    es_primer_envio = True
 
     for empresa in empresas:
         empresa_id = empresa["id"]
@@ -251,6 +284,7 @@ async def fase_mail(
 
         if estado:
             estado.fase_actual = f"ATICMA: Procesando {nombre}…"
+            estado.target = nombre
 
         logger.info(
             "ATICMA procesando | empresa='%s' | dominio=%s | perfil=%s",
@@ -262,6 +296,8 @@ async def fase_mail(
         if en_cd:
             logger.info("ATICMA en cooldown | empresa='%s'", nombre)
             metricas["omitidas"] += 1
+            if estado:
+                estado.mail_omitidas += 1
             continue
 
         # Buscar contacto de email
@@ -273,6 +309,8 @@ async def fase_mail(
         if not contactos_email:
             logger.info("ATICMA sin email | empresa='%s'", nombre)
             metricas["omitidas"] += 1
+            if estado:
+                estado.mail_omitidas += 1
             continue
 
         # Priorizar RRHH sobre General
@@ -294,6 +332,9 @@ async def fase_mail(
                 nombre, str(exc)[:300],
             )
             metricas["errores"] += 1
+            if estado:
+                estado.emails_fail += 1
+                estado.mail_errores += 1
             continue
         except Exception as exc:
             logger.error(
@@ -301,10 +342,13 @@ async def fase_mail(
                 nombre, type(exc).__name__, str(exc)[:200],
             )
             metricas["errores"] += 1
+            if estado:
+                estado.emails_fail += 1
+                estado.mail_errores += 1
             continue
 
         # Rate limiting
-        if not es_primer_envio and not dry_run:
+        if not dry_run:
             sleep_s = random.randint(SMTP_JITTER_MIN_S, SMTP_JITTER_MAX_S)
             logger.info("ATICMA rate limit: %d seg…", sleep_s)
             await asyncio.sleep(sleep_s)
@@ -316,7 +360,9 @@ async def fase_mail(
                 destinatario, asunto_usado[:60], perfil_cv,
             )
             metricas["enviadas"] += 1
-            es_primer_envio = False
+            if estado:
+                estado.emails_ok += 1
+                estado.mail_enviadas += 1
             continue
 
         exito = await asyncio.to_thread(_enviar_via_smtp, config, msg)
@@ -334,6 +380,9 @@ async def fase_mail(
                 nombre, destinatario, envio_id,
             )
             metricas["enviadas"] += 1
+            if estado:
+                estado.emails_ok += 1
+                estado.mail_enviadas += 1
         else:
             await asyncio.to_thread(
                 registrar_envio,
@@ -347,10 +396,12 @@ async def fase_mail(
                 nombre, destinatario,
             )
             metricas["errores"] += 1
-
-        es_primer_envio = False
+            if estado:
+                estado.emails_fail += 1
+                estado.mail_errores += 1
 
     if estado:
+        estado.target = "—"
         estado.fase_actual = (
             f"ATICMA envíos completos: "
             f"Enviados={metricas['enviadas']} | "

@@ -62,6 +62,7 @@ MAX_PLAYWRIGHT: int = 2
 # al Productor. Ahora que el Consumidor está listo ANTES de que el Productor
 # llene la cola, 50 es un valor cómodo.
 QUEUE_MAXSIZE: int = 50
+DORK_ZONA_DEFAULT: str = "Mar del Plata"
 
 # Timeout para pw.chromium.launch(). Si Chromium no levanta en este tiempo
 # en tu Arch, hay un problema de entorno (sandbox, libs, display).
@@ -483,12 +484,14 @@ async def _productor_dork(
             logger_fn.info("Productor: Consumidor listo. Iniciando dorking.")
 
         for idx, rubro in enumerate(rubros, start=1):
-            query = _construir_query_dork(rubro, zona="")
+            query = _construir_query_dork(rubro, zona=DORK_ZONA_DEFAULT)
             logger_fn.info(
-                "Dorking [%d/%d] | rubro=%s",
-                idx, len(rubros), rubro,
+                "Dorking [%d/%d] | zona=%s | rubro=%s",
+                idx, len(rubros), DORK_ZONA_DEFAULT, rubro,
             )
-            estado.fase_actual = f"Dorking [{idx}/{len(rubros)}]: {rubro}…"
+            estado.fase_actual = (
+                f"Dorking [{idx}/{len(rubros)}] {DORK_ZONA_DEFAULT}: {rubro}…"
+            )
             with estado._lock:
                 estado.target = rubro
 

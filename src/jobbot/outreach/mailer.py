@@ -398,7 +398,7 @@ async def procesar_envios_pendientes(
         empresa_id = empresa["id"]
         nombre     = empresa["nombre"]
         dominio    = empresa["dominio"]
-        perfil_cv  = empresa["perfil_cv"] or "CV_Admin_IT"
+        perfil_cv  = empresa["perfil_cv"] or "CV_IT_QA"
         rubro      = empresa["rubro"]
         score      = empresa["score"]
         metricas["procesadas"] += 1

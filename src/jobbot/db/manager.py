@@ -46,7 +46,7 @@ _DDL_STATEMENTS: tuple[str, ...] = (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         empresa_id    INTEGER NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
         email_o_link  TEXT    NOT NULL UNIQUE,
-        tipo          TEXT    NOT NULL CHECK(tipo IN ('RRHH', 'General', 'LinkedIn', 'WhatsApp')),
+        tipo          TEXT    NOT NULL CHECK(tipo IN ('RRHH', 'General', 'WhatsApp')),
         prioridad     INTEGER NOT NULL CHECK(prioridad BETWEEN 0 AND 3)
     ) STRICT;
     """,
@@ -255,12 +255,12 @@ def insert_contacto(
     Inserta un contacto vinculado a una empresa.
     Silencia conflictos de unicidad (IGNORE) para ser idempotente.
 
-    Tipos válidos: 'RRHH' | 'General' | 'LinkedIn' | 'WhatsApp'
+    Tipos válidos: 'RRHH' | 'General' | 'WhatsApp'
 
     Raises:
         ValueError: Si los parámetros son inválidos.
     """
-    if tipo not in ("RRHH", "General", "LinkedIn", "WhatsApp"):
+    if tipo not in ("RRHH", "General", "WhatsApp"):
         raise ValueError(f"Tipo de contacto inválido: '{tipo}'.")
     if prioridad not in range(4):
         raise ValueError(f"Prioridad fuera de rango: {prioridad}.")
@@ -287,10 +287,11 @@ def insert_contacto(
 
 
 def get_contactos_by_empresa(empresa_id: int) -> list[sqlite3.Row]:
-    """Retorna todos los contactos de una empresa ordenados por prioridad."""
+    """Retorna emails y WhatsApp de una empresa ordenados por prioridad."""
     sql = """
         SELECT * FROM contactos
         WHERE empresa_id = ?
+          AND tipo IN ('RRHH', 'General', 'WhatsApp')
         ORDER BY prioridad ASC;
     """
     with get_connection() as conn:
@@ -622,7 +623,6 @@ if __name__ == "__main__":
         rubro="software", perfil_cv="CV_IT_QA", score=90,
     )
     insert_contacto(emp_id, "rrhh@techmdp.com.ar", tipo="RRHH", prioridad=1)
-    insert_contacto(emp_id, "linkedin.com/company/techmdp", tipo="LinkedIn", prioridad=2)
     print(f"Empresa ID: {emp_id}")
     print(f"En cooldown: {esta_en_cooldown(emp_id)}")
     listas = get_empresas_listas_para_envio(min_score=50)

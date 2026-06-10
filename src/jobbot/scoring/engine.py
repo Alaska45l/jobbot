@@ -21,10 +21,8 @@ logger = logging.getLogger("jobbot.scoring")
 # ---------------------------------------------------------------------------
 
 CONTACT_WEIGHTS: Final[dict[str, int]] = {
-    "linkedin_person":  50,
     "email_rrhh":       40,
     "email_general":    15,
-    "linkedin_company": 10,
     "form_only":       -15,
     "no_ssl":          -10,
 }
@@ -96,7 +94,7 @@ HYBRID_DIRECT_THRESHOLD: Final[int] = 2
 #       se usa solo en combinación via _contar_ngrams.
 #   "wordpress" removido: demasiados falsos positivos (PyMEs de MdP).
 #   "portfolio" removido: software houses y agencias TIENEN portfolio y
-#       son exactamente el perfil CV_Tech que queremos contactar.
+#       son exactamente el perfil CV_IT_QA que queremos contactar.
 
 NEGATIVE_SIGNALS: Final[dict[str, int]] = {
     "últimas noticias":      -90,
@@ -169,15 +167,8 @@ _RE_EMAIL: Final[re.Pattern[str]] = re.compile(
     """,
     re.VERBOSE | re.IGNORECASE,
 )
-_RE_LINKEDIN_PERSON: Final[re.Pattern[str]]  = re.compile(r'linkedin\.com/in/[\w\-]+',      re.IGNORECASE)
-_RE_LINKEDIN_COMPANY: Final[re.Pattern[str]] = re.compile(r'linkedin\.com/company/[\w\-]+', re.IGNORECASE)
 _RE_WP_FORM: Final[re.Pattern[str]]          = re.compile(r'wpcf7|contact-form-7|wpforms|cf7', re.IGNORECASE)
 _RE_HTML_TAGS: Final[re.Pattern[str]]        = re.compile(r'<[^>]+>')
-
-_RRHH_ROLES: Final[frozenset[str]] = frozenset({
-    "rrhh", "recursos humanos", "talent", "people", "recruiting",
-    "reclutamiento", "selección", "hr manager", "people operations",
-})
 
 # ---------------------------------------------------------------------------
 # Estructuras de datos
@@ -234,14 +225,6 @@ def _clasificar_email(prefix: str) -> tuple[str, int, int]:
     if prefix in _GENERAL_PREFIXES:
         return "General", 2, CONTACT_WEIGHTS["email_general"]
     return "General", 3, CONTACT_WEIGHTS["email_general"] // 2
-
-
-def _detectar_linkedin_persona_con_rol(html: str, url: str) -> bool:
-    idx = html.lower().find(url.lower())
-    if idx == -1:
-        return False
-    contexto = html[max(0, idx - 300): idx + 300].lower()
-    return any(rol in contexto for rol in _RRHH_ROLES)
 
 
 def _contar_keywords(texto: str, keywords: list[str]) -> int:
@@ -358,10 +341,9 @@ def analizar_empresa(
     score: int = penalizacion
 
     # Cortocircuito: si las penalizaciones ya garantizan exclusión y no hay
-    # contactos de RRHH posibles, saltamos el análisis de contactos para
-    # ahorrar CPU. El umbral de corte es -(umbral_auto + max_posible_contacto).
-    # max_posible_contacto ≈ 90 (LinkedIn person con rol + email RRHH).
-    CORTE_TEMPRANO = -(umbral_auto + 90)
+    # contactos directos posibles, saltamos el análisis de contactos para
+    # ahorrar CPU. El umbral de corte contempla email RRHH + WhatsApp.
+    CORTE_TEMPRANO = -(umbral_auto + 75)
     if score <= CORTE_TEMPRANO:
         logger.info(
             "Exclusión temprana | dominio=%s | penalización=%+d (≤%d)",
@@ -406,37 +388,7 @@ def analizar_empresa(
             valor=numero, tipo="WhatsApp", prioridad=1, puntos=0,
         ))
 
-    # 3. LinkedIn — Personas
-    linkedin_personas: set[str] = set()
-    for match in _RE_LINKEDIN_PERSON.finditer(html):
-        url = match.group(0).lower()
-        if url in linkedin_personas:
-            continue
-        linkedin_personas.add(url)
-        tiene_rol = _detectar_linkedin_persona_con_rol(html, url)
-        puntos    = CONTACT_WEIGHTS["linkedin_person"] if tiene_rol else CONTACT_WEIGHTS["linkedin_company"]
-        prioridad = 0 if tiene_rol else 2
-        contactos.append(ContactoDetectado(
-            valor=f"https://www.{url}", tipo="LinkedIn", prioridad=prioridad, puntos=puntos,
-        ))
-        score += puntos
-        logger.debug("LinkedIn persona | %s | rrhh=%s | +%d pts", url, tiene_rol, puntos)
-
-    # 4. LinkedIn — Empresa
-    linkedin_companies: set[str] = set()
-    for match in _RE_LINKEDIN_COMPANY.finditer(html):
-        url = match.group(0).lower()
-        if url in linkedin_companies or url.replace("company/", "in/") in linkedin_personas:
-            continue
-        linkedin_companies.add(url)
-        puntos = CONTACT_WEIGHTS["linkedin_company"]
-        contactos.append(ContactoDetectado(
-            valor=f"https://www.{url}", tipo="LinkedIn", prioridad=2, puntos=puntos,
-        ))
-        score += puntos
-        logger.debug("LinkedIn company | %s | +%d pts", url, puntos)
-
-    # 5. Penalizaciones
+    # 3. Penalizaciones
     tiene_form_solo = False
     if _RE_WP_FORM.search(html) and not emails_vistos:
         score += CONTACT_WEIGHTS["form_only"]
@@ -446,7 +398,7 @@ def analizar_empresa(
         score += CONTACT_WEIGHTS["no_ssl"]
         logger.debug("Penalización: sin SSL | %d pts", CONTACT_WEIGHTS["no_ssl"])
 
-    # 6. Detección de perfil CV
+    # 4. Detección de perfil CV
     keyword_matches: dict[str, int] = {
         k: _contar_keywords(texto_plano, v["keywords"])  # type: ignore[arg-type]
         for k, v in RUBRO_WEIGHTS.items()
@@ -501,8 +453,6 @@ if __name__ == "__main__":
     <html><body>
       <p>Somos una empresa de software en Mar del Plata.</p>
       <a href="mailto:rrhh@techmdp.com.ar">rrhh@techmdp.com.ar</a>
-      <a href="https://www.linkedin.com/company/techmdp">LinkedIn</a>
-      <a href="https://www.linkedin.com/in/ana-garcia-hr">Ana García - Talent Acquisition</a>
     </body></html>
     """
     resultado = analizar_empresa(html_demo, dominio="techmdp.com.ar", umbral_auto=60)

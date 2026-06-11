@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">JobBot runtime architecture</title>
+  <desc id="desc">A diagram showing JobBot inputs, orchestrator, OSINT, scraping, scoring, database, CV generation, outreach, and terminal telemetry.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff6b35"/>
+    </marker>
+    <style>
+      .bg { fill: #f7f7f8; }
+      .panel { fill: #ffffff; stroke: #3f3f46; stroke-width: 2; rx: 12; }
+      .core { fill: #18181b; stroke: #ff6b35; stroke-width: 3; rx: 14; }
+      .accent { fill: #fff4ef; stroke: #ff6b35; stroke-width: 2; rx: 12; }
+      .store { fill: #eef6ff; stroke: #007aff; stroke-width: 2; rx: 12; }
+      .text { font: 18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #18181b; }
+      .muted { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #52525b; }
+      .label { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #71717a; text-transform: uppercase; }
+      .coreText { font: 20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #f4f4f5; font-weight: 700; }
+      .coreMuted { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #d4d4d8; }
+      .line { fill: none; stroke: #ff6b35; stroke-width: 2.4; marker-end: url(#arrow); }
+      .lineBlue { fill: none; stroke: #007aff; stroke-width: 2.4; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1200" height="760"/>
+
+  <text class="label" x="50" y="52">INPUTS</text>
+  <rect class="panel" x="50" y="72" width="260" height="118"/>
+  <text class="text" x="75" y="112">rubros.txt</text>
+  <text class="muted" x="75" y="142">Sector search list</text>
+  <text class="muted" x="75" y="168">Mar del Plata dorking</text>
+
+  <rect class="panel" x="50" y="218" width="260" height="132"/>
+  <text class="text" x="75" y="258">ATICMA markdown</text>
+  <text class="muted" x="75" y="288">JSON fenced block</text>
+  <text class="muted" x="75" y="314">Curated local companies</text>
+
+  <rect class="panel" x="50" y="378" width="260" height="118"/>
+  <text class="text" x="75" y="418">.env</text>
+  <text class="muted" x="75" y="448">SMTP credentials</text>
+  <text class="muted" x="75" y="474">Sender identity</text>
+
+  <text class="label" x="395" y="52">CONTROL PLANE</text>
+  <rect class="core" x="380" y="72" width="440" height="148"/>
+  <text class="coreText" x="420" y="122">core.orchestrator</text>
+  <text class="coreMuted" x="420" y="154">asyncio producer-consumer runtime</text>
+  <text class="coreMuted" x="420" y="180">bounded queues, semaphores, TUI snapshots</text>
+
+  <rect class="accent" x="380" y="262" width="210" height="122"/>
+  <text class="text" x="410" y="302">OSINT dorking</text>
+  <text class="muted" x="410" y="332">DDGS queries</text>
+  <text class="muted" x="410" y="358">Portal exclusion list</text>
+
+  <rect class="accent" x="610" y="262" width="210" height="122"/>
+  <text class="text" x="640" y="302">Scraper</text>
+  <text class="muted" x="640" y="332">Playwright Chromium</text>
+  <text class="muted" x="640" y="358">stealth contexts</text>
+
+  <rect class="panel" x="380" y="424" width="210" height="122"/>
+  <text class="text" x="410" y="464">Scoring</text>
+  <text class="muted" x="410" y="494">Lexical signals</text>
+  <text class="muted" x="410" y="520">Negative filters</text>
+
+  <rect class="panel" x="610" y="424" width="210" height="122"/>
+  <text class="text" x="640" y="464">ATICMA router</text>
+  <text class="muted" x="640" y="494">Keyword routing</text>
+  <text class="muted" x="640" y="520">Profile selection</text>
+
+  <text class="label" x="910" y="52">STATE AND OUTPUTS</text>
+  <rect class="store" x="890" y="72" width="260" height="132"/>
+  <text class="text" x="920" y="112">SQLite WAL</text>
+  <text class="muted" x="920" y="142">empresas</text>
+  <text class="muted" x="920" y="168">contactos, campanas_envios</text>
+
+  <rect class="panel" x="890" y="242" width="260" height="122"/>
+  <text class="text" x="920" y="282">Typst CV builder</text>
+  <text class="muted" x="920" y="312">Profile templates</text>
+  <text class="muted" x="920" y="338">Per-company PDF</text>
+
+  <rect class="panel" x="890" y="402" width="260" height="132"/>
+  <text class="text" x="920" y="442">Outreach</text>
+  <text class="muted" x="920" y="472">SMTP email</text>
+  <text class="muted" x="920" y="498">WhatsApp Web</text>
+
+  <rect class="core" x="380" y="606" width="440" height="96"/>
+  <text class="coreText" x="420" y="648">Rich terminal telemetry</text>
+  <text class="coreMuted" x="420" y="676">Mascot, counters, phase, logs, WA QR payload</text>
+
+  <path class="line" d="M310 131 C340 131 350 131 380 131"/>
+  <path class="line" d="M310 284 C345 284 345 151 380 151"/>
+  <path class="line" d="M310 437 C345 437 345 174 380 174"/>
+  <path class="line" d="M600 220 L500 262"/>
+  <path class="line" d="M600 220 L700 262"/>
+  <path class="line" d="M485 384 L485 424"/>
+  <path class="line" d="M715 384 L715 424"/>
+  <path class="lineBlue" d="M820 146 L890 146"/>
+  <path class="lineBlue" d="M590 485 C690 565 820 568 890 500"/>
+  <path class="lineBlue" d="M715 546 C770 590 860 358 890 312"/>
+  <path class="line" d="M1020 364 L1020 402"/>
+  <path class="line" d="M590 651 L380 651"/>
+  <path class="line" d="M820 651 C860 651 850 468 890 468"/>
+  <path class="line" d="M590 485 L610 485"/>
+</svg>

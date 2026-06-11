@@ -2,8 +2,11 @@
   <title id="title">JobBot runtime architecture</title>
   <desc id="desc">A diagram showing JobBot inputs, orchestrator, OSINT, scraping, scoring, database, CV generation, outreach, and terminal telemetry.</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff6b35"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#007aff"/>
     </marker>
     <style>
       .bg { fill: #f7f7f8; }
@@ -16,12 +19,30 @@
       .label { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #71717a; text-transform: uppercase; }
       .coreText { font: 20px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #f4f4f5; font-weight: 700; }
       .coreMuted { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #d4d4d8; }
-      .line { fill: none; stroke: #ff6b35; stroke-width: 2.4; marker-end: url(#arrow); }
-      .lineBlue { fill: none; stroke: #007aff; stroke-width: 2.4; marker-end: url(#arrow); }
+      .line { fill: none; stroke: #ff6b35; stroke-width: 2.4; marker-end: url(#arrowOrange); }
+      .lineBlue { fill: none; stroke: #007aff; stroke-width: 2.4; marker-end: url(#arrowBlue); }
     </style>
   </defs>
 
   <rect class="bg" x="0" y="0" width="1200" height="760"/>
+
+  <!-- Connectors are drawn before nodes so labels stay clean. -->
+  <path class="line" d="M310 131 L374 131"/>
+  <path class="line" d="M310 284 C350 284 340 160 374 160"/>
+  <path class="line" d="M310 437 C355 437 330 188 374 188"/>
+  <path class="lineBlue" d="M820 146 L884 146"/>
+
+  <path class="line" d="M520 220 L520 256"/>
+  <path class="line" d="M680 220 L680 256"/>
+  <path class="line" d="M485 384 L485 418"/>
+  <path class="line" d="M715 384 L715 418"/>
+
+  <path class="lineBlue" d="M590 485 C700 595 825 565 884 501"/>
+  <path class="lineBlue" d="M715 546 C745 594 865 380 884 318"/>
+  <path class="line" d="M1020 364 L1020 396"/>
+
+  <path class="line" d="M600 220 C600 310 600 520 600 600"/>
+  <path class="line" d="M820 652 C860 652 850 468 884 468"/>
 
   <text class="label" x="50" y="52">INPUTS</text>
   <rect class="panel" x="50" y="72" width="260" height="118"/>
@@ -84,19 +105,4 @@
   <rect class="core" x="380" y="606" width="440" height="96"/>
   <text class="coreText" x="420" y="648">Rich terminal telemetry</text>
   <text class="coreMuted" x="420" y="676">Mascot, counters, phase, logs, WA QR payload</text>
-
-  <path class="line" d="M310 131 C340 131 350 131 380 131"/>
-  <path class="line" d="M310 284 C345 284 345 151 380 151"/>
-  <path class="line" d="M310 437 C345 437 345 174 380 174"/>
-  <path class="line" d="M600 220 L500 262"/>
-  <path class="line" d="M600 220 L700 262"/>
-  <path class="line" d="M485 384 L485 424"/>
-  <path class="line" d="M715 384 L715 424"/>
-  <path class="lineBlue" d="M820 146 L890 146"/>
-  <path class="lineBlue" d="M590 485 C690 565 820 568 890 500"/>
-  <path class="lineBlue" d="M715 546 C770 590 860 358 890 312"/>
-  <path class="line" d="M1020 364 L1020 402"/>
-  <path class="line" d="M590 651 L380 651"/>
-  <path class="line" d="M820 651 C860 651 850 468 890 468"/>
-  <path class="line" d="M590 485 L610 485"/>
 </svg>

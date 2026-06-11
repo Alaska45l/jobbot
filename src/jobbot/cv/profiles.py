@@ -55,11 +55,10 @@ PROFILES: dict[str, CVProfile] = {
             "Cuento con experiencia practica en diagnostico de hardware y "
             "software, soporte a usuarios, sistemas POS, Linux/Windows, redes "
             "basicas, desarrollo web y revision funcional de aplicaciones. "
-            "Trabajo principalmente con herramientas modernas como *Go, "
-            "PostgreSQL, SvelteKit, TypeScript, Python, Rust/Tauri y "
-            "Cloudflare*, y complemento esa base con conocimientos de "
-            "ecosistemas muy usados en Argentina: *Java/Spring Boot, PHP "
-            "con Laravel/Symfony y JavaScript con Node.js/Express, React y Vue*.\n\n"
+            "Trabajo principalmente con *Go, PostgreSQL, SvelteKit, "
+            "TypeScript, Python y Rust/Tauri*, y complemento esa base con "
+            "conocimientos de *Java/Spring Boot, PHP con Laravel/Symfony, "
+            "JavaScript con Node.js/Express, React, Vue y C++*.\n\n"
             "Busco incorporarme a equipos donde pueda aportar en *QA, soporte "
             "tecnico, operaciones IT, documentacion, desarrollo junior o mejora "
             "de procesos tecnicos*."
@@ -178,8 +177,9 @@ PROFILES: dict[str, CVProfile] = {
             "*Stack principal:* Go, PostgreSQL, SvelteKit, TypeScript, Python, "
             "Rust/Tauri, SQL, HTML, CSS, JavaScript y Git.",
 
-            "*Ecosistemas frecuentes en Argentina:* Java con Spring Boot, "
-            "PHP con Laravel/Symfony, JavaScript con Node.js/Express, React y Vue.",
+            "*Conocimientos complementarios de desarrollo:* Java con Spring "
+            "Boot, PHP con Laravel/Symfony, JavaScript con Node.js/Express, "
+            "React, Vue y C++.",
 
             "*Soporte e infraestructura:* Windows 10/11, Windows Server, "
             "Linux, redes TCP/IP, instalacion de sistemas, diagnostico de "

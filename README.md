@@ -1,292 +1,285 @@
 <div align="center">
-  <h1>JobBot v2.6</h1>
-  <p><strong>Automated OSINT, Stealth Scraping & Dynamic Pipeline for Targeted Job Searching</strong></p>
-
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/Playwright-Stealth-2EAD33?style=flat-square&logo=playwright&logoColor=white" alt="Playwright">
-  <img src="https://img.shields.io/badge/Typst-Dynamic_CV-239BBE?style=flat-square&logo=typst&logoColor=white" alt="Typst">
-  <img src="https://img.shields.io/badge/SQLite-WAL-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite3">
-  <img src="https://img.shields.io/badge/asyncio-Producer_Consumer-FFD43B?style=flat-square&logo=python&logoColor=black" alt="asyncio">
+  <img src="docs/assets/jobbot-preview.png" alt="JobBot pixel mascot and wordmark" width="760">
+  <h1>JobBot</h1>
+  <p><strong>Deterministic OSINT, stealth-oriented scraping, CV routing, and outreach orchestration for targeted job discovery.</strong></p>
 </div>
 
----
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/Playwright-Chromium-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright Chromium">
+  <img src="https://img.shields.io/badge/SQLite-WAL-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite WAL">
+  <img src="https://img.shields.io/badge/Typst-CV%20compiler-239DAD?style=for-the-badge&logo=typst&logoColor=white" alt="Typst CV compiler">
+  <img src="https://img.shields.io/badge/License-GPL--3.0-111111?style=for-the-badge&logo=gnu&logoColor=white" alt="GPL 3.0 license">
+</p>
 
-JobBot es un pipeline asíncrono de prospección B2B y contacto automatizado. Utiliza técnicas de dorking a nivel nacional para recolección de objetivos, scraping con evasión de firewalls (WAFs) para extraer datos de contacto, y un motor SMTP/WhatsApp que compila y envía currículums hiper-personalizados al vuelo.
+JobBot is a local-first automation pipeline for discovering Argentine company domains, extracting contact signals, scoring whether a company is a useful target, routing the right CV profile, and dispatching carefully paced outreach through SMTP or WhatsApp Web.
 
-## <img src="https://api.iconify.design/material-symbols/lightbulb.svg?color=%23007acc" width="24" height="24" align="center"> Why JobBot? (Architecture & Philosophy)
+It was built from a practical frustration: after months of sending applications through traditional portals with very low response rates, the strategy changed back to something older and more direct: deliver the CV to the company itself. Instead of doing that door-to-door on a rainy afternoon, JobBot turns that workflow into an auditable pipeline.
 
-JobBot nace de una necesidad real y de la frustración con el ecosistema actual de reclutamiento. Después de meses de enviar solicitudes a través de portales tradicionales (ZonaJobs, Randstad, Bumeran, LinkedIn) con tasas de respuesta bajísimas, decidí cambiar la estrategia y volver a lo básico: entregar el CV directamente en la puerta de la empresa. Pero en lugar de hacerlo a pie una tarde de lluvia, decidí automatizarlo.
+The project is intentionally not an LLM wrapper. It does not pay an external model to read a basic HTML page or decide whether a contact is useful. The scoring path is lexical, deterministic, testable Python: regular expressions, weighted contact signals, negative filters, and profile routing rules.
 
-Al buscar herramientas de automatización de Cold Emailing u OSINT en GitHub, me encontré con un problema: casi todos los repositorios actuales son simples "wrappers" que requieren tarjetas de crédito para pagar costosas APIs de IA generativa (OpenAI, Claude) solo para leer un HTML básico.
+## What It Does
 
-Por eso construí JobBot bajo una filosofía técnica estricta:
+JobBot operates as an orchestrator around six runtime responsibilities:
 
-* **Determinismo sobre Alucinación:** El bot no utiliza LLMs para tareas de clasificación. Emplea un motor léxico propio en Python puro con expresiones regulares para decidir el score del prospecto sin equivocarse.
-* **Evasión Stealth:** Supera protecciones como Cloudflare o Datadome utilizando `playwright-stealth`, rotación de contextos, spoofing de zona horaria y simulación de biometría humana (movimientos de mouse y scroll aleatorio).
-* **CVs Mutantes (Typst):** En lugar de enviar un PDF genérico, el orquestador lee la web de la empresa e inyecta las *keywords* exactas de la compañía en plantillas Typst por perfil (`CV_Tech`, `CV_Admin_IT`, `CV_Hybrid`), compilando un PDF único antes de enviarlo.
-* **Daemon 24/7 Resiliente:** Diseñado para correr de fondo en `tmux`. Cuenta con manejo seguro de señales de apagado (`SIGTERM`), timeouts estrictos anti-livelock y pausas aleatorias (Jitter) para evitar baneos de IP o de cuenta SMTP.
+| Responsibility | Implementation | What happens |
+| --- | --- | --- |
+| Seed discovery | [src/jobbot/core/orchestrator.py](src/jobbot/core/orchestrator.py) | Builds DuckDuckGo search queries from `rubros.txt`, targets `site:.ar`, defaults to Mar del Plata, and filters known job boards, social networks, marketplaces, and public portals. |
+| Scraping | [src/jobbot/scraper/engine.py](src/jobbot/scraper/engine.py) | Launches Playwright Chromium with isolated contexts, randomized user agents, Argentine locale/timezone, resource blocking, priority paths, and a `robots.txt` gate. |
+| Scoring | [src/jobbot/scoring/engine.py](src/jobbot/scoring/engine.py) | Scores RRHH emails, general emails, WhatsApp numbers, SSL presence, form-only sites, sector keywords, and negative signals such as news/blog/e-commerce patterns. |
+| Persistence | [src/jobbot/db/manager.py](src/jobbot/db/manager.py) | Stores companies, contacts, scores, CV profiles, and campaign history in SQLite with WAL mode, `STRICT` tables, foreign keys, and cooldown-aware queries. |
+| CV generation | [src/jobbot/cv/builder.py](src/jobbot/cv/builder.py) | Renders a per-company Typst template into a PDF attachment, injecting company name, selected profile, target keywords, and profile-specific content. |
+| Outreach | [src/jobbot/outreach/mailer.py](src/jobbot/outreach/mailer.py), [src/jobbot/outreach/wa_sender.py](src/jobbot/outreach/wa_sender.py) | Sends through SMTP with async jitter and cooldowns, or through WhatsApp Web with a persistent browser profile, QR login flow, daily cap, and delivery records. |
 
----
+## Why It Exists
 
-## <img src="https://api.iconify.design/material-symbols/layers-outline.svg?color=%23007acc" width="24" height="24" align="center"> Arquitectura y Características
+The repository started as a reaction against two unsatisfying extremes.
 
-* **Pipeline Producer-Consumer:** Arquitectura asíncrona con `asyncio.Queue` para dorking y scraping concurrente con semáforos, resolviendo deadlocks mediante SENTINEL patterns y `consumer_ready` events.
-* **Dorking Engine Nacional:** Automatiza consultas avanzadas leyendo listas de rubros dinámicas desde un archivo externo (`rubros.txt`).
-* **3 Perfiles de CV Dinámicos:** Asignación automática de plantilla según el scoring: `CV_Tech` (software, pentesting, full-stack), `CV_Admin_IT` (AFIP, POS, oficina, soporte), `CV_Hybrid` (operaciones + infraestructura IT).
-* **12×12 Email Templates:** 12 asuntos y 12 cuerpos con tonos variados (formal, conversacional, directo, storytelling, problem-solving) para evitar detección como correo automatizado.
-* **Rich TUI (Terminal User Interface):** Un panel de control y telemetría inspirado en la estética retro-futurista de Teenage Engineering, con mascota animada por estado.
-* **Módulo WhatsApp Web:** Despacho automatizado de mensajes de presentación a líneas celulares extraídas de la web, con sesiones persistentes y rate-limits adaptables.
-* **Smart Dispatcher (SMTP):** Cliente de correo con soporte para Dry-Run, jitter anti-ban y colas asíncronas.
-* **Lead Scoring con Señales Negativas:** Motor léxico que excluye portales de noticias, blogs y e-commerce B2C antes de evaluar contactos, con trazabilidad de penalizaciones.
+The first extreme is the job-board funnel: every application goes through the same platform, the same opaque filters, and the same low-signal intake forms. The second is the modern automation repo that is mostly a wrapper around paid AI APIs, payment forms, and vague promises. JobBot takes the opposite route: build a small deterministic system that can be inspected, run locally, modified, and stopped cleanly.
 
----
+The design philosophy is strict:
 
-## <img src="https://api.iconify.design/material-symbols/folder-open-outline.svg?color=%23007acc" width="24" height="24" align="center"> Estructura del Proyecto
+- Determinism over hallucination: classification and routing are implemented with explicit lexical rules and tests.
+- Direct company contact over portal dependency: the pipeline looks for first-party domains and direct contact addresses before outreach.
+- Back-pressure over runaway concurrency: producer-consumer queues, semaphores, sentinels, and startup handshakes keep scraping bounded.
+- Local state over hosted control planes: SQLite is the control database, and credentials are read from the local environment.
+- Personalized documents over generic attachments: Typst compiles a CV tailored to the detected company profile before an email is sent.
+- A visible machine over silent background work: Rich renders a live terminal control surface for phase, counters, target, logs, and WhatsApp QR state.
 
-```
+## Visual System
+
+The logo and interface are part of the operating model, not decoration. The pixel mascot is used in the terminal UI as a readable state indicator, and the orange/grey palette maps to the project's high-contrast terminal surface.
+
+<p align="center">
+  <img src="docs/assets/jobbot-tui.png" alt="JobBot Rich terminal dashboard with mascot, telemetry, and log panels" width="920">
+</p>
+
+The screenshot above shows the live Rich dashboard generated by [src/jobbot/tui/dashboard.py](src/jobbot/tui/dashboard.py). The left panel carries the mascot and active phase, the right panel exposes OSINT, email, and WhatsApp counters, and the bottom log tape shows recent pipeline events. During WhatsApp authentication, the same surface can render QR payload state while the browser session is established.
+
+## Architecture
+
+![JobBot runtime architecture](docs/assets/jobbot-architecture.svg)
+
+The central control plane is `core.orchestrator`. In `--dork-scrape` and `--auto` modes, it starts a producer and consumer with an `asyncio.Queue`. The consumer launches Chromium first, signals `consumer_ready`, and only then allows the dorking producer to enqueue domains. That handshake prevents the producer from filling the queue before the browser side is alive.
+
+The scraper writes normalized company and contact data into SQLite. The mailer and WhatsApp sender read from that database using cooldown-aware queries, so outreach is controlled by persisted history instead of in-memory state. The TUI reads snapshots from the orchestrator state object; it does not own the pipeline logic.
+
+## Pipeline Modes
+
+| Mode | Command | Runtime path |
+| --- | --- | --- |
+| Dork only | `jobbot --dork` | Reads `rubros.txt`, searches, filters domains, and stores seed companies without scraping immediately. |
+| Scrape only | `jobbot --scrape` | Reads domains from `jobbot.db`, opens Playwright, scrapes priority pages, scores, and stores contacts. |
+| Producer-consumer | `jobbot --dork-scrape` | Runs search and scraping concurrently with queue back-pressure. |
+| SMTP campaign | `jobbot --mail` | Selects companies above `--min-score`, compiles a dynamic PDF CV, sends through SMTP, and records campaign state. |
+| WhatsApp campaign | `jobbot --wa` | Selects pending WhatsApp contacts, opens WhatsApp Web, authenticates with QR when needed, and sends paced messages. |
+| ATICMA pipeline | `jobbot --aticma` | Imports curated ATICMA company JSON from Markdown, scrapes or falls back to curated data, routes CV profile, and sends email. |
+| Daemon loop | `jobbot --auto` | Runs dork-scrape plus email in repeated cycles with timeout, failure backoff, and anti-ban pauses. |
+
+The CLI accepts `--concurrencia` from 1 to 10, but the orchestrator caps effective Playwright concurrency with `MAX_PLAYWRIGHT = 2` to protect memory on small machines.
+
+## CV Routing
+
+JobBot currently supports the ATICMA-oriented CV set in [src/jobbot/cv/profiles.py](src/jobbot/cv/profiles.py):
+
+| Profile | Intended fit | Template |
+| --- | --- | --- |
+| `CV_IT_QA` | QA, support, junior development, infrastructure, security, cloud, IoT, and software teams. | `src/jobbot/cv/templates/cv_it_qa.typ` |
+| `CV_BackOffice` | E-commerce, CRM, logistics, business operations, documentation, marketing operations, and process support. | `src/jobbot/cv/templates/cv_backoffice.typ` |
+| `CV_Ciencia` | Biotech, green tech, quality control, laboratory work, agro, industrial, and scientific documentation. | `src/jobbot/cv/templates/cv_ciencia.typ` |
+
+The database still accepts legacy labels (`CV_Tech`, `CV_Admin_IT`, `CV_Hybrid`) for compatibility. Outreach templates normalize those labels to the current profiles before choosing subjects and body text.
+
+## Repository Layout
+
+```text
 jobbot/
-├── pyproject.toml                    # Metadata, dependencias, entry points
-├── .env.example                      # Plantilla de variables de entorno
-├── rubros.txt                        # Sectores industriales (uno por línea)
-├── roadmap.md                        # Hoja de ruta del producto
-├── README.md
-├── src/
-│   └── jobbot/
-│       ├── __init__.py               # Paquete raíz, versión
-│       ├── __main__.py               # python -m jobbot
-│       ├── cli.py                    # Argparse, validación, entry point
-│       ├── config.py                 # Variables de entorno centralizadas
-│       ├── core/
-│       │   └── orchestrator.py       # Pipelines, estado, TUI loop
-│       ├── cv/
-│       │   ├── builder.py            # Compilación Typst asíncrona
-│       │   ├── profiles.py           # 3 perfiles con datos reales del CV
-│       │   └── templates/
-│       │       ├── cv_tech.typ       # Plantilla: Software & Security
-│       │       ├── cv_admin_it.typ   # Plantilla: Admin, Ops & IT Support
-│       │       └── cv_hybrid.typ     # Plantilla: Operaciones IT híbridas
-│       ├── db/
-│       │   ├── manager.py            # SQLite WAL, migraciones, CRUD
-│       │   ├── models.py             # Dataclasses (Empresa, Contacto, Envio)
-│       │   └── queries.py            # SQL queries extraídas
-│       ├── outreach/
-│       │   ├── mailer.py             # Motor SMTP con CV dinámico
-│       │   ├── wa_sender.py          # Motor WhatsApp Web
-│       │   └── templates.py          # 12 asuntos × 12 cuerpos × firma
-│       ├── scoring/
-│       │   └── engine.py             # Scoring léxico + señales negativas
-│       ├── scraper/
-│       │   ├── engine.py             # Playwright stealth, procesar_dominio
-│       │   ├── stealth.py            # Contextos aislados, resource blocking
-│       │   └── navigation.py         # Navegación deep, priority paths
-│       ├── tui/
-│       │   ├── dashboard.py          # Paneles Rich, telemetría
-│       │   ├── mascot.py             # Mascota 8-bit animada
-│       │   └── state.py              # BotState, EstadoBot
-│       └── utils/
-│           ├── browser.py            # apply_stealth()
-│           ├── phone.py              # Extracción de números WhatsApp
-│           ├── domain.py             # Validación y extracción de dominios
-│           └── stealth.min.js        # JS injection antibot
-├── tests/
-│   ├── test_scoring.py
-│   ├── test_cv_builder.py
-│   ├── test_db.py
-│   └── test_outreach_templates.py
-└── cvs/
-    ├── template.typ                  # Plantilla Typst legacy (fallback)
-    └── perfil.jpg                    # Foto de perfil para el CV
++-- pyproject.toml                 # Package metadata, dependencies, CLI entry point
++-- README.md                      # Project documentation
++-- LICENSE                        # GPL-3.0 license
++-- rubros.txt                     # Sector list used by dorking mode
++-- roadmap.md                     # Local roadmap notes
++-- docs/assets/                   # README logo, screenshot, architecture diagram
++-- cvs/
+|   +-- perfil.webp                # Optional profile image copied into Typst builds
+|   +-- preview/                   # Preview PDFs for current CV profiles
++-- src/jobbot/
+|   +-- cli.py                     # argparse CLI and validation
+|   +-- config.py                  # .env-backed runtime configuration
+|   +-- core/orchestrator.py       # Async pipeline, TUI state, modes, daemon loop
+|   +-- scraper/                   # Playwright scraping, navigation, extraction
+|   +-- scoring/                   # Deterministic lexical scoring engine
+|   +-- db/                        # SQLite schema, migrations, CRUD queries
+|   +-- cv/                        # Typst profile definitions and compiler
+|   +-- outreach/                  # SMTP and WhatsApp dispatch engines
+|   +-- aticma/                    # Curated ATICMA import, extraction, routing, mail
+|   +-- tui/                       # Rich dashboard and mascot presentation
+|   +-- utils/                     # Browser stealth script, phone/domain helpers
++-- tests/                         # Focused unit and smoke tests
 ```
 
----
+`jobbot.db` is created in the repository root at runtime. It is operational state, not application source.
 
-## <img src="https://api.iconify.design/material-symbols/settings-outline.svg?color=%23007acc" width="24" height="24" align="center"> Instalación
+## Requirements
 
-### 1. Clonar y crear entorno virtual
+| Requirement | Used by | Notes |
+| --- | --- | --- |
+| Python 3.11 or newer | Entire package | Declared in `pyproject.toml`. |
+| Playwright Chromium | `--scrape`, `--dork-scrape`, `--wa`, `--auto`, `--aticma` scraping | Install the browser after installing Python dependencies. |
+| Typst CLI | `--mail`, `--auto`, `--aticma` mail phase | Must be available on `PATH` as `typst`; PDF generation fails fast if missing. |
+| SMTP account | `--mail`, `--auto`, `--aticma` mail phase | App passwords are recommended for providers such as Gmail. |
+| WhatsApp Web session | `--wa` | Stored in `src/jobbot/outreach/wa_profile/` at runtime. |
+| ATICMA Markdown file | `--aticma` | Defaults to `~/Documents/Curriculums/empresas_ATICMA.md`; pass `--aticma-file` for another path. |
 
-```bash
-git clone https://github.com/alaska45l/jobbot.git
-cd jobbot
-python -m venv .venv
-source .venv/bin/activate
-```
+## Configuration
 
-### 2. Instalar dependencias
-
-```bash
-# Producción
-pip install -e .
-
-# Desarrollo (incluye pytest)
-pip install -e '.[dev]'
-
-# Playwright necesita sus navegadores
-playwright install chromium
-```
-
-### 3. Variables de Entorno (`.env`)
-
-Copiar la plantilla y completar con tus credenciales:
-
-```bash
-cp .env.example .env
-```
+`python-dotenv` is loaded at import time, so a local `.env` file in the repository root is enough for normal operation.
 
 ```env
-# Servidor SMTP (Recomendado: Gmail con App Password)
-SMTP_HOST="smtp.gmail.com"
-SMTP_PORT="587"
-SMTP_USER="tu_correo@gmail.com"
-SMTP_PASS="tu_app_password_de_16_caracteres"
-
-# Perfil del Remitente
-SENDER_NAME="Tu Nombre"
-GITHUB_USER="TuUsuarioGitHub"
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@example.com
+SMTP_PASS=your-app-password
+SENDER_NAME=Your Name
+GITHUB_USER=your-github-user
 ```
 
-### 4. Dependencias Externas del Sistema
+| Variable | Required for | Default | Purpose |
+| --- | --- | --- | --- |
+| `SMTP_HOST` | Email modes | None in `ConfigSMTP.from_env()` | SMTP server hostname. |
+| `SMTP_PORT` | Email modes | `587` | SMTP port used with STARTTLS. |
+| `SMTP_USER` | Email modes | None | Sender login and email address. |
+| `SMTP_PASS` | Email modes | None | SMTP password or provider app password. |
+| `SENDER_NAME` | Email and WhatsApp text | `Alaska` | Display name and CV filename component. |
+| `GITHUB_USER` | Email signature | `tu-usuario` | Used to render `{github_user}.github.io/` in the signature. |
 
-  * **Typst:** Se requiere el binario de Typst en el `PATH` para la compilación dinámica de CVs.
+Runtime limits such as SMTP jitter, WhatsApp jitter, mail cooldown, scraping cooldown, WhatsApp cooldown, and daily WhatsApp cap are currently constants in [src/jobbot/config.py](src/jobbot/config.py).
 
-    ```bash
-    # Opción 1: Cargo
-    cargo install typst-cli
+## Quick Start
 
-    # Opción 2: Binario precompilado
-    # https://github.com/typst/typst/releases
-
-    # Verificar
-    typst --version
-    ```
-
-  * **Plantillas CV:** Las plantillas por perfil viven en `src/jobbot/cv/templates/`. La imagen de perfil es opcional en `cvs/perfil.jpg`.
-
----
-
-## <img src="https://api.iconify.design/material-symbols/terminal.svg?color=%23007acc" width="24" height="24" align="center"> Uso del Pipeline
-
-El sistema se opera mediante el CLI `jobbot` (instalado via `pip install -e .`) o `python -m jobbot`.
-
-### Modo Daemon (Recomendado)
-
-Ejecuta el ciclo completo (Dork → Scrape → Mail) en un loop infinito con manejo de timeouts y descansos anti-ban.
+From the repository root:
 
 ```bash
-jobbot --auto --concurrencia 3
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+python -m playwright install chromium
 ```
 
-### Ejecuciones Manuales (Por Fases)
+Install Typst if you plan to run any mode that compiles CV PDFs:
 
-**Fase 1: Recolección de Semillas (Dorking)**
+```bash
+cargo install typst-cli
+typst --version
+```
+
+Check the CLI after the package is installed:
+
+```bash
+jobbot --help
+```
+
+Run a safe dry run through the email path:
+
+```bash
+jobbot --mail --dry-run --min-score 55
+```
+
+## Common Workflows
+
+Collect seeds only:
 
 ```bash
 jobbot --dork --rubros-file rubros.txt --limite-dork 30
 ```
 
-**Fase 2: Extracción y Scoring (Scraping)**
+Scrape domains already stored in SQLite:
 
 ```bash
-jobbot --scrape --concurrencia 3
+jobbot --scrape --concurrencia 2
 ```
 
-**Fase 2b: Dork + Scrape en paralelo (Producer-Consumer)**
+Run dorking and scraping together:
 
 ```bash
-jobbot --dork-scrape --concurrencia 2
+jobbot --dork-scrape --concurrencia 2 --limite-dork 30
 ```
 
-**Fase 3: Despacho (Mailing o WhatsApp)**
+Send an email campaign after reviewing configuration:
 
 ```bash
-# Auditoría en terminal (Dry-Run: No acciona envíos reales)
-jobbot --mail --dry-run --min-score 55
-jobbot --wa --dry-run
-
-# Ejecución real
 jobbot --mail --min-score 55
-jobbot --wa
 ```
 
----
-
-## <img src="https://api.iconify.design/material-symbols/description-outline.svg?color=%23007acc" width="24" height="24" align="center"> Perfiles de CV
-
-El scoring engine asigna automáticamente uno de 3 perfiles al compilar el CV para cada empresa:
-
-| Perfil | Cuándo se asigna | Foco del CV |
-| :--- | :--- | :--- |
-| `CV_Tech` | Software houses, consultoras IT, ciberseguridad | Go, Rust, SvelteKit, pentesting, INVARIANT SYSTEM, CI/CD |
-| `CV_Admin_IT` | Clínicas, estudios, inmobiliarias, PyMEs sin equipo dev | AFIP, POS Morphi, stock, soporte HW/SW, Excel, Windows Server |
-| `CV_Hybrid` | Logística, manufactura, empresas medianas con depto. de sistemas | Operaciones + IT, Python automation, redes, soporte + admin |
-
-El perfil `CV_Hybrid` se activa cuando el scoring detecta que una empresa cruza señales tech **y** admin simultáneamente (≥2 keywords de cada uno), o cuando dominan keywords operacionales-IT como "logística", "sucursales", "ERP", "mesa de ayuda".
-
----
-
-## <img src="https://api.iconify.design/material-symbols/database.svg?color=%23007acc" width="24" height="24" align="center"> Gestión de Base de Datos
-
-Toda la metadata se almacena en `jobbot.db` (SQLite, WAL mode). Para reiniciar métricas, liberar el cooldown de 90 días o realizar un borrado:
-
-```sql
--- Limpiar historial de envíos (reinicia el cooldown de SMTP)
-DELETE FROM campanas_envios;
-
--- Wipe total (Borrar inteligencia recolectada)
-DELETE FROM contactos;
-DELETE FROM empresas;
-```
-
----
-
-## <img src="https://api.iconify.design/material-symbols/science-outline.svg?color=%23007acc" width="24" height="24" align="center"> Tests
+Preview WhatsApp messages without sending:
 
 ```bash
-# Instalar dependencias de desarrollo
-pip install -e '.[dev]'
-
-# Ejecutar test suite
-pytest -q
-
-# Solo py_compile (sin pytest)
-python -m py_compile src/jobbot/cli.py src/jobbot/scoring/engine.py
+jobbot --wa --dry-run --limite 10
 ```
 
----
+Run the ATICMA import, scrape, route, and email path without sending:
 
-## <img src="https://api.iconify.design/material-symbols/list-alt-outline.svg?color=%23007acc" width="24" height="24" align="center"> Referencia CLI
+```bash
+jobbot --aticma --aticma-file ~/Documents/Curriculums/empresas_ATICMA.md --dry-run
+```
 
-| Argumento | Tipo | Default | Descripción |
-| :--- | :--- | :--- | :--- |
-| `--auto` | Flag | — | Inicia el Daemon de ejecución continua 24/7. |
-| `--dork` | Flag | — | Solo dorking (semillas a DB, sin scraping). |
-| `--scrape` | Flag | — | Solo scraping (dominios pendientes desde DB). |
-| `--dork-scrape` | Flag | — | Dork + Scrape en paralelo (Producer-Consumer). |
-| `--mail` | Flag | — | Ejecuta el motor SMTP con Typst. |
-| `--wa` | Flag | — | Ejecuta el motor de envíos por WhatsApp Web. |
-| `--rubros-file` | String | `rubros.txt` | Archivo txt con la lista dinámica de rubros. |
-| `--limite-dork` | Int | `30` | Número máximo de resultados por rubro. |
-| `--concurrencia` | Int | `2` | Instancias Playwright en paralelo (máx 10). |
-| `--min-score` | Int | `55` | Puntaje mínimo para envío automático. |
-| `--dry-run` | Flag | — | Simula el envío sin accionar SMTP/WA. |
-| `--limite` | Int | `10` | Límite de empresas a procesar. |
-| `--headless` | Flag | — | Forzar modo headless en Playwright. |
-| `--forzar-rescraping` | Flag | — | Ignorar cooldown de scraping. |
+Run the continuous daemon:
 
-> **Nota:** Los modos (`--auto`, `--dork`, `--scrape`, `--dork-scrape`, `--mail`, `--wa`) son mutuamente excluyentes.
+```bash
+jobbot --auto --concurrencia 2
+```
 
----
+## Database Model
 
-## <img src="https://api.iconify.design/material-symbols/build-outline.svg?color=%23007acc" width="24" height="24" align="center"> Tech Stack
+SQLite is initialized by [src/jobbot/db/manager.py](src/jobbot/db/manager.py). The main tables are:
 
-| Capa | Tecnología |
-| :--- | :--- |
-| Lenguaje | Python 3.11+ |
-| Async | `asyncio` (Producer-Consumer, `Queue`, `Event`, semáforos) |
-| Browser | Playwright (Chromium, headless, stealth contexts) |
-| Base de datos | SQLite3 (WAL, `STRICT` tables, foreign keys) |
-| CV Compiler | Typst CLI (binario externo, 3 plantillas `.typ`) |
-| Email | `smtplib` + `email.message.EmailMessage` |
-| WhatsApp | Playwright con `user_data_dir` persistente |
-| TUI | Rich (`Live`, `Layout`, `Panel`, mascota animada) |
-| Env | python-dotenv |
-| Search | `ddgs` (DuckDuckGo search) |
+| Table | Purpose |
+| --- | --- |
+| `empresas` | Company identity, domain, sector, selected CV profile, score, scrape timestamp, and ATICMA extension fields. |
+| `contactos` | Emails and WhatsApp numbers linked to companies with type and priority. |
+| `campanas_envios` | Email and WhatsApp send history, CV identifier, subject or phone key, status, and timestamp. |
+
+The database uses WAL mode and foreign keys. Seed rows inserted by dorking receive an old `fecha_scraping` so they are immediately eligible for scraping instead of being blocked by the scraping cooldown.
+
+## Operations And Safety
+
+- The scraper checks `robots.txt` before processing a domain and skips domains denied by that file.
+- The scraper reduces bandwidth by blocking images, media, fonts, stylesheets, websockets, manifests, and known non-target domains.
+- SMTP sending waits between messages using `SMTP_JITTER_MIN_S` and `SMTP_JITTER_MAX_S`, currently 180 to 480 seconds.
+- WhatsApp sending enforces a daily cap from `WA_LIMITE_DIARIO`, currently 30 messages, and waits 180 to 450 seconds between non-first sends.
+- Mail cooldown is 90 days by default; scraping and WhatsApp cooldowns are 7 days by default.
+- `--dry-run` is meaningful for `--mail`, `--wa`, `--aticma`, and `--auto`; the CLI rejects it for modes where it has no effect.
+- The ATICMA pipeline is idempotent at import time because company rows are upserted by domain and email contacts are inserted with uniqueness checks.
+- SMTP credentials, WhatsApp browser state, local databases, and generated QR screenshots are trust boundaries. Do not commit real `.env` files or session directories.
+
+## Testing
+
+Install the development extra first:
+
+```bash
+python -m pip install -e '.[dev]'
+```
+
+Run the test suite:
+
+```bash
+python -m pytest -q
+```
+
+The current tests cover deterministic scoring, dork query construction, database validation, outreach template behavior, and Typst marker formatting. They do not run live DuckDuckGo, live SMTP, live WhatsApp, or real browser scraping against external companies.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `No module named jobbot` | Running from a `src/` layout before installation. | Run `python -m pip install -e .`, then use `jobbot ...` or `python -m jobbot ...`. |
+| `No module named dotenv` | Python dependencies are not installed. | Run `python -m pip install -e '.[dev]'`. |
+| `Variables de entorno faltantes` | SMTP mode started without required SMTP variables. | Create `.env` with `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS`. |
+| `typst` is not available on `PATH` | PDF compilation requested before installing Typst. | Install `typst-cli` and verify `typst --version`. |
+| Chromium launch timeout | Browser binaries or system dependencies are missing. | Run `python -m playwright install chromium`; on Linux, install any missing Playwright system libraries. |
+| ATICMA file not found | Default Markdown path does not exist on the machine. | Pass `--aticma-file /path/to/empresas_ATICMA.md`. |
+| No companies are ready for mail | Scores are below `--min-score`, there are no email contacts, or companies are in cooldown. | Inspect `jobbot.db`, rerun scraping, or lower `--min-score` for a dry run only. |
+
+## License
+
+JobBot is distributed under the [GNU General Public License v3.0](LICENSE).

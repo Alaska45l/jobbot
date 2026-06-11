@@ -303,40 +303,26 @@ async def _navegar_rutas_prioritarias(
 
 
 # ---------------------------------------------------------------------------
-# procesar_dominio
+# scrape_dominio
 # ---------------------------------------------------------------------------
 
-async def procesar_dominio(
+async def scrape_dominio(
     url_o_dominio: str,
-    nombre_empresa: Optional[str] = None,
-    rubro: Optional[str] = None,
-    min_score_para_log: int = 0,
     browser: Optional[Browser] = None,
-    forzar_rescraping: bool = False,
-) -> Optional[ResultadoScoring]:
+) -> str:
     """
-    Pipeline completo para un dominio: robots check → stealth browser →
-    scraping profundo → scoring → persistencia en DB.
+    Scrapea la home y rutas prioritarias de un dominio.
+    Retorna el HTML agregado sin ejecutar scoring ni persistir en DB.
     """
     url_base     = _normalizar_dominio(url_o_dominio)
     dominio_base = _extraer_dominio_raiz(url_base)
-    nombre       = nombre_empresa or dominio_base
 
-    logger.info("Iniciando procesamiento | dominio=%s", dominio_base)
-
-    empresa_existente = await asyncio.to_thread(get_empresa_by_dominio, dominio_base)
-    if empresa_existente and not forzar_rescraping:
-        en_cooldown = await asyncio.to_thread(
-            _esta_en_cooldown_scraping, empresa_existente["id"]
-        )
-        if en_cooldown:
-            logger.info("Empresa en cooldown de scraping | dominio=%s", dominio_base)
-            return None
+    logger.info("Iniciando scraping HTML | dominio=%s", dominio_base)
 
     robots_ok = await asyncio.to_thread(_verificar_robots, url_base)
     if not robots_ok:
         logger.warning("robots.txt deniega acceso | dominio=%s", dominio_base)
-        return None
+        return ""
 
     async def _scrape_con_browser(b: Browser) -> str:
         context = await _crear_contexto_stealth(b)
@@ -377,16 +363,54 @@ async def procesar_dominio(
 
     except PlaywrightError as exc:
         logger.exception("Error crítico Playwright | dominio=%s | %s", dominio_base, str(exc)[:300])
-        return None
+        return ""
     except Exception as exc:
         logger.exception("Error inesperado | dominio=%s | %s", dominio_base, str(exc)[:300])
-        return None
+        return ""
 
     if not html_total.strip():
         logger.warning("HTML total vacío | dominio=%s", dominio_base)
-        return None
+        return ""
 
     logger.info("HTML acumulado | dominio=%s | chars=%d", dominio_base, len(html_total))
+    return html_total
+
+
+# ---------------------------------------------------------------------------
+# procesar_dominio
+# ---------------------------------------------------------------------------
+
+async def procesar_dominio(
+    url_o_dominio: str,
+    nombre_empresa: Optional[str] = None,
+    rubro: Optional[str] = None,
+    min_score_para_log: int = 0,
+    browser: Optional[Browser] = None,
+    forzar_rescraping: bool = False,
+) -> Optional[ResultadoScoring]:
+    """
+    Pipeline completo para un dominio: robots check → stealth browser →
+    scraping profundo → scoring → persistencia en DB.
+    """
+    url_base     = _normalizar_dominio(url_o_dominio)
+    dominio_base = _extraer_dominio_raiz(url_base)
+    nombre       = nombre_empresa or dominio_base
+
+    logger.info("Iniciando procesamiento | dominio=%s", dominio_base)
+
+    empresa_existente = await asyncio.to_thread(get_empresa_by_dominio, dominio_base)
+    if empresa_existente and not forzar_rescraping:
+        en_cooldown = await asyncio.to_thread(
+            _esta_en_cooldown_scraping, empresa_existente["id"]
+        )
+        if en_cooldown:
+            logger.info("Empresa en cooldown de scraping | dominio=%s", dominio_base)
+            return None
+
+    html_total = await scrape_dominio(url_o_dominio, browser=browser)
+    if not html_total.strip():
+        logger.warning("HTML total vacío | dominio=%s", dominio_base)
+        return None
 
     resultado: ResultadoScoring = await asyncio.to_thread(
         analizar_empresa, html_total, dominio_base, True,

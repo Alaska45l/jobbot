@@ -14,7 +14,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="jobbot",
         description=(
-            "JobBot v2.6 — OSINT, scraping Productor-Consumidor y cold email."
+            "JobBot v2.6 — OSINT, scraping Productor-Consumidor y cold email.\n"
+            "ATICMA MdP: Pipeline de postulación a empresas locales."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -23,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  jobbot --scrape --concurrencia 2\n"
             "  jobbot --dork-scrape --concurrencia 2\n"
             "  jobbot --mail --min-score 60 --dry-run\n"
+            "  jobbot --aticma --dry-run\n"
             "  jobbot --auto\n"
         ),
     )
@@ -46,6 +48,14 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--mail", action="store_true")
     mode.add_argument("--auto", action="store_true")
     mode.add_argument("--wa", action="store_true")
+    mode.add_argument(
+        "--aticma",
+        action="store_true",
+        help=(
+            "Pipeline ATICMA MdP: importar empresas, scrapear sitios, "
+            "rutear CVs y enviar postulaciones."
+        ),
+    )
 
     parser.add_argument(
         "--rubros-file",
@@ -70,12 +80,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="forzar_rescraping",
     )
+    parser.add_argument(
+        "--aticma-file",
+        type=str,
+        default=None,
+        dest="aticma_file",
+        metavar="FILE",
+        help="Ruta al archivo empresas_ATICMA.md (por defecto: ~/Documents/Curriculums/empresas_ATICMA.md)",
+    )
     return parser
 
 
 def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    if args.dry_run and not (args.mail or args.auto or args.wa):
-        parser.error("--dry-run solo tiene efecto con --mail, --wa o --auto")
+    if args.dry_run and not (args.mail or args.auto or args.wa or args.aticma):
+        parser.error("--dry-run solo tiene efecto con --mail, --wa, --aticma o --auto")
     if not (1 <= args.concurrencia <= 10):
         parser.error("--concurrencia debe estar entre 1 y 10")
 

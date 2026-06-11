@@ -3,18 +3,11 @@
 #set text(size: 9.3pt)
 
 #let accent = rgb("#7a4b12")
-#let kw_list = ({{ KEYWORDS }})
 
 = {{ NOMBRE }}
 #text(fill: accent, weight: "bold")[{{ TITULO }}]
-
-{{ UBICACION }} | {{ EMAIL }} | {{ LINKEDIN }} | {{ PORTFOLIO }} | {{ GITHUB }}
-
-== Prioridades para {{ EMPRESA }}
-#for kw in kw_list [
-  #box(stroke: accent, inset: 3pt, radius: 2pt)[#kw]
-  #h(3pt)
-]
+#v(-2pt)
+{{ UBICACION }} | {{ EMAIL }} | {{ PORTFOLIO }} | {{ GITHUB }}
 
 == Perfil híbrido
 {{ SUMMARY }}
@@ -27,6 +20,3 @@
 
 == Educación y certificaciones
 {{ EDUCATION }}
-
-{{ CERTIFICATIONS }}
-

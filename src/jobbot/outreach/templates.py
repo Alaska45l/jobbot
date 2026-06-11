@@ -1,195 +1,277 @@
-"""Cold outreach templates in Argentine Spanish."""
+"""Email templates for ATICMA direct job application in Argentine Spanish."""
 
-ASUNTOS: tuple[str, ...] = (
-    "Perfil Admin/IT para {nombre_empresa}",
-    "Postulación espontánea | {nombre_empresa}",
-    "CV para futuras búsquedas",
-    "{nombre_empresa} - candidatura espontánea",
-    "Soporte IT y administración",
-    "Interés en sumarme al equipo",
-    "CV adjunto - perfil técnico operativo",
-    "Consulta por oportunidades en {nombre_empresa}",
-    "Perfil híbrido para operaciones e IT",
-    "Presentación profesional - {nombre_empresa}",
-    "Administración, soporte y automatización",
-    "Candidatura desde Mar del Plata",
+from __future__ import annotations
+
+from typing import Final
+
+
+_PROFILE_ALIASES: Final[dict[str, str]] = {
+    "CV_Tech": "CV_IT_QA",
+    "CV_Admin_IT": "CV_BackOffice",
+    "CV_Hybrid": "CV_Ciencia",
+}
+
+
+ASUNTOS_POR_PERFIL: Final[dict[str, tuple[str, ...]]] = {
+    "CV_IT_QA": (
+        "Postulación espontánea - QA / Soporte IT / Desarrollo Jr - Mar del Plata",
+        "Perfil técnico local - QA, soporte IT y automatización",
+        "QA / Soporte IT / Desarrollo Jr - Candidatura espontánea",
+        "Perfil híbrido soporte + QA + desarrollo - Mar del Plata",
+        "Postulación técnica local para {nombre_empresa}",
+        "{nombre_empresa} - Perfil QA / Soporte IT / Desarrollo Jr",
+    ),
+    "CV_BackOffice": (
+        "Postulación espontánea - Back Office técnico / Operaciones digitales",
+        "Perfil local - operaciones digitales, documentación y soporte de gestión",
+        "Back Office / Soporte administrativo técnico - Mar del Plata",
+        "Operaciones digitales y soporte de gestión - Candidatura espontánea",
+        "Postulación técnica-operativa para {nombre_empresa}",
+        "{nombre_empresa} - Perfil de operaciones digitales y documentación",
+    ),
+    "CV_Ciencia": (
+        "Postulación espontánea - Control de calidad / Laboratorio - Mar del Plata",
+        "Perfil local - control de calidad, documentación técnica y laboratorio",
+        "Control de calidad / Auxiliar de laboratorio - Candidatura espontánea",
+        "Perfil técnico-científico local - documentación y procesos",
+        "Postulación para Control de calidad o documentación técnica",
+        "{nombre_empresa} - Perfil de control de calidad y documentación",
+    ),
+}
+
+# Backward-compatible flattened tuple for older callers/tests that import ASUNTOS.
+ASUNTOS: tuple[str, ...] = tuple(
+    dict.fromkeys(
+        asunto
+        for asuntos_perfil in ASUNTOS_POR_PERFIL.values()
+        for asunto in asuntos_perfil
+    )
 )
+
+
+LINEAS_ENCAJE: Final[dict[str, str]] = {
+    "CV_IT_QA": (
+        "Me postulo de forma espontánea para oportunidades actuales o futuras "
+        "en áreas de QA, soporte técnico, operaciones IT, documentación o "
+        "desarrollo junior."
+    ),
+    "CV_BackOffice": (
+        "Me postulo de forma espontánea para oportunidades actuales o futuras "
+        "en back office técnico, operaciones digitales, documentación, "
+        "soporte de gestión o mejora de procesos."
+    ),
+    "CV_Ciencia": (
+        "Me postulo de forma espontánea para oportunidades actuales o futuras "
+        "en control de calidad, laboratorio, documentación técnica, análisis "
+        "de datos o soporte a procesos técnicos."
+    ),
+}
+
+
+DETALLES_PERFIL: Final[dict[str, str]] = {
+    "CV_IT_QA": (
+        "Cuento con experiencia práctica en troubleshooting, soporte a "
+        "usuarios, desarrollo web, revisión funcional y documentación de "
+        "incidencias."
+    ),
+    "CV_BackOffice": (
+        "Cuento con experiencia práctica en sistemas POS, carga y control de "
+        "datos, facturación, inventario, reportes y soporte interno a procesos."
+    ),
+    "CV_Ciencia": (
+        "Cuento con formación en ciencias y desarrollo, junto con experiencia "
+        "operativa en control, registro, soporte de sistemas y revisión de "
+        "inconsistencias."
+    ),
+}
+
+
+FORTALEZAS_PERFIL: Final[dict[str, str]] = {
+    "CV_IT_QA": (
+        "Mi fortaleza principal es el análisis: identifico causas de errores, "
+        "reproduzco problemas, documento con claridad y propongo mejoras."
+    ),
+    "CV_BackOffice": (
+        "Mi fortaleza principal es ordenar información: detecto inconsistencias, "
+        "documento procesos y traduzco problemas operativos en acciones claras."
+    ),
+    "CV_Ciencia": (
+        "Mi fortaleza principal es el registro preciso: observo desvíos, "
+        "documento hallazgos y sigo procedimientos con criterio analítico."
+    ),
+}
+
+
+CONTEXTOS_FALLBACK: Final[dict[str, str]] = {
+    "CV_IT_QA": (
+        "Me interesa especialmente sumarme a equipos donde pueda aportar entre "
+        "usuarios, soporte, QA, operaciones y desarrollo."
+    ),
+    "CV_BackOffice": (
+        "Me interesa especialmente aportar en equipos que necesiten orden "
+        "operativo, documentación clara y mejora de procesos internos."
+    ),
+    "CV_Ciencia": (
+        "Me interesa especialmente aportar en equipos que valoren el control, "
+        "la trazabilidad, la documentación y el análisis de procesos."
+    ),
+}
+
 
 CUERPOS: tuple[str, ...] = (
     """\
-Buenos días,
-
-Mi nombre es {nombre_remitente} y me comunico para dejar mi candidatura espontánea \
-en {nombre_empresa}.
-
-Mi perfil combina administración de oficina con conocimientos técnicos en soporte IT, \
-lo que me permite gestionar tareas operativas, resolver incidencias de sistemas, \
-administrar accesos y documentar procesos internos de forma autónoma.
-
-Adjunto mi CV para que puedan evaluarlo. Quedo a disposición ante cualquier consulta.
-
-{firma}""",
-
-    """\
-Hola,
-
-Soy {nombre_remitente} y les escribo desde Mar del Plata para compartir mi perfil \
-con {nombre_empresa}.
-
-Cuento con experiencia en gestión administrativa, atención a proveedores y clientes, \
-herramientas de oficina y un fuerte componente técnico: soporte de primer nivel, \
-scripting para automatizar tareas repetitivas y administración básica de redes.
-
-Me pareció útil acercarles mi CV directamente por si el perfil encaja con alguna \
-búsqueda actual o futura.
-
-{firma}""",
-
-    """\
 Estimado equipo de {nombre_empresa}:
 
-Soy {nombre_remitente} y me postulo de forma espontánea. Tengo experiencia en \
-administración, operaciones y soporte IT, con disponibilidad para cubrir tareas \
-operativas y técnicas dentro de equipos chicos o medianos.
+{linea_encaje}
 
-Adjunto mi CV en PDF. Estoy disponible para una entrevista cuando lo consideren \
-conveniente.
+Soy {nombre_remitente}, vivo en Mar del Plata. {detalle_perfil} \
+{fortaleza_perfil}
 
-Saludos cordiales,
+{contexto_empresa}
+
+Adjunto mi CV y quedo a disposición si consideran que mi perfil puede \
+encajar en el equipo.
 
 {firma}""",
 
     """\
-Buenas tardes,
+Buenos días,
 
-Mi nombre es {nombre_remitente}. Encontré información sobre {nombre_empresa} y me \
-resultó interesante la posibilidad de sumarme al equipo.
+Soy {nombre_remitente}, de Mar del Plata, y les acerco mi candidatura \
+espontánea para {nombre_empresa}.
 
-Tengo experiencia cubriendo roles que suelen dividirse entre administración y soporte \
-técnico: puedo redactar informes, coordinar con proveedores, diagnosticar fallas de \
-red y automatizar tareas repetitivas con scripts.
+{linea_encaje}
 
-Si el perfil les resulta relevante, con gusto ampliamos información.
+{detalle_perfil} {fortaleza_perfil}
+
+Adjunto mi CV para que puedan evaluarlo. Quedo atenta a cualquier consulta.
 
 {firma}""",
 
     """\
 Hola equipo de {nombre_empresa},
 
-Les escribo para dejar mi CV ante la posibilidad de que necesiten reforzar el área \
-administrativa, operativa o de soporte técnico.
+Me presento: soy {nombre_remitente}. {linea_encaje}
 
-Soy {nombre_remitente}, con manejo de herramientas ofimáticas, facturación, gestión \
-de stock, redes, sistemas operativos y automatización de procesos. Resido en Mar del \
-Plata y puedo adaptarme a equipos administrativos, técnicos o mixtos.
+{detalle_perfil}
 
-Gracias por considerar mi postulación.
+{fortaleza_perfil} {contexto_empresa}
 
-{firma}""",
-
-    """\
-Buenos días,
-
-Soy {nombre_remitente}. Les comparto mi CV porque mi experiencia puede ser útil para \
-{nombre_empresa} en tareas donde se cruzan administración, soporte a usuarios y mejora \
-de procesos internos.
-
-En trabajos anteriores combiné gestión operativa, facturación, control de stock, \
-mantenimiento IT de sucursales y resolución de problemas técnicos cotidianos.
-
-Quedo a disposición.
-
-{firma}""",
-
-    """\
-Hola,
-
-Me presento: soy {nombre_remitente}, de Mar del Plata. Trabajo con una combinación de \
-software, infraestructura y operaciones administrativas.
-
-Además de soporte técnico y redes, tengo experiencia real en entornos con presión \
-operativa: control de stock, POS, facturación, coordinación de equipos y documentación \
-de procesos. Por eso pensé que mi perfil podía ser pertinente para {nombre_empresa}.
-
-Adjunto mi CV.
-
-{firma}""",
-
-    """\
-Estimado equipo:
-
-Soy {nombre_remitente}. Les envío mi CV para que lo tengan presente en búsquedas \
-actuales o futuras de {nombre_empresa}.
-
-Mi perfil está orientado a resolver problemas concretos: ordenar procesos, asistir a \
-usuarios, mantener equipos, documentar procedimientos y automatizar tareas repetitivas \
-cuando conviene hacerlo con Python o scripting.
-
-Saludos,
+Les adjunto mi CV en PDF. Muchas gracias por su tiempo.
 
 {firma}""",
 
     """\
 Buenas tardes,
 
-Soy {nombre_remitente}. Me interesa acercar mi perfil a {nombre_empresa} porque puedo \
-aportar en un punto intermedio entre administración, soporte técnico e implementación \
-de herramientas internas.
+Soy {nombre_remitente}. Me interesa presentar mi perfil para búsquedas \
+actuales o futuras en {nombre_empresa}.
 
-Tengo experiencia con Windows/Linux, redes TCP/IP, Excel avanzado, facturación, POS, \
-stock, recuperación de datos y desarrollo de utilidades para trabajo operativo.
+{linea_encaje}
 
-Adjunto CV en PDF.
+{detalle_perfil} Además, me destaco por comunicar problemas técnicos u \
+operativos de forma clara y accionable.
 
-{firma}""",
-
-    """\
-Hola {nombre_empresa},
-
-Les escribo de manera directa para evitar una postulación genérica por portal. Soy \
-{nombre_remitente} y busco sumarme a una organización donde mi combinación de soporte \
-IT, administración y automatización tenga uso práctico.
-
-El CV adjunto resume mi experiencia en operaciones, sistemas, desarrollo y soporte.
-
-Muchas gracias por su tiempo.
-
-{firma}""",
-
-    """\
-Buenos días,
-
-Quería dejarles una presentación breve. Soy {nombre_remitente}, con experiencia en \
-gestión operativa, soporte IT, documentación, redes y automatización.
-
-Si {nombre_empresa} necesita una persona que pueda moverse entre tareas administrativas \
-y técnicas sin depender siempre de terceros, mi perfil puede resultarles útil.
-
-Adjunto mi CV para evaluación.
+Adjunto mi CV. Quedo a disposición para ampliar información.
 
 {firma}""",
 
     """\
 Estimados/as,
 
-Mi nombre es {nombre_remitente}. Les acerco mi candidatura espontánea para \
-{nombre_empresa}, con foco en administración, soporte técnico y mejora de procesos.
+Mi nombre es {nombre_remitente} y resido en Mar del Plata.
 
-Mi experiencia combina trabajo operativo real con formación en desarrollo de software, \
-sistemas, Linux/Windows, redes y seguridad aplicada. Esa mezcla me permite entender \
-problemas de oficina y también resolver la parte técnica cuando aparece.
+{linea_encaje}
 
-Quedo atenta.
+{fortaleza_perfil} {detalle_perfil}
+
+Si el perfil resulta relevante para {nombre_empresa}, con gusto podemos \
+coordinar una entrevista.
+
+{firma}""",
+
+    """\
+Hola,
+
+Soy {nombre_remitente}. Les escribo para dejar mi postulación espontánea en \
+{nombre_empresa}.
+
+{linea_encaje}
+
+{contexto_empresa} {detalle_perfil}
+
+Adjunto mi CV para evaluación y quedo atenta.
 
 {firma}""",
 )
+
 
 FIRMA_TEMPLATE: str = """\
 {nombre_remitente}
 Mar del Plata, Buenos Aires
 Email: {email_remitente}
-Web: {github_user}.github.io/  |  linkedin.com/in/{linkedin_user}
+Web: {github_user}.github.io/"""
 
-PD: Este correo y su adjunto fueron generados con JobBot, \
-una herramienta de automatización de búsqueda laboral que desarrollé en Python. \
-Podés ver el código en: github.com/{github_user}/jobbot"""
+
+def normalizar_perfil_cv(perfil_cv: str | None) -> str:
+    """Normalize legacy profile codes to the current ATICMA CV names."""
+    if not perfil_cv:
+        return "CV_IT_QA"
+    return _PROFILE_ALIASES.get(perfil_cv, perfil_cv)
+
+
+def asuntos_para_perfil(perfil_cv: str | None) -> tuple[str, ...]:
+    """Return subject templates tuned to the selected CV profile."""
+    perfil = normalizar_perfil_cv(perfil_cv)
+    return ASUNTOS_POR_PERFIL.get(perfil, ASUNTOS_POR_PERFIL["CV_IT_QA"])
+
+
+def _limpiar_rubro(rubro: str | None) -> str:
+    if not rubro:
+        return ""
+    limpio = " ".join(rubro.split())
+    if len(limpio) <= 90:
+        return limpio
+    return limpio[:87].rsplit(" ", 1)[0].rstrip(".,;:") + "..."
+
+
+def contexto_empresa_para_perfil(perfil_cv: str | None, rubro: str | None) -> str:
+    """Build a cautious fit line from the profile and optional company sector."""
+    perfil = normalizar_perfil_cv(perfil_cv)
+    rubro_limpio = _limpiar_rubro(rubro)
+    if not rubro_limpio:
+        return CONTEXTOS_FALLBACK.get(perfil, CONTEXTOS_FALLBACK["CV_IT_QA"])
+
+    if perfil == "CV_BackOffice":
+        return (
+            "Por el tipo de actividad vinculada a "
+            f"{rubro_limpio}, creo que puedo aportar orden operativo, "
+            "seguimiento y documentación clara."
+        )
+    if perfil == "CV_Ciencia":
+        return (
+            "Por el tipo de actividad vinculada a "
+            f"{rubro_limpio}, creo que puedo aportar criterio analítico, "
+            "control y documentación técnica."
+        )
+    return (
+        "Por el tipo de actividad vinculada a "
+        f"{rubro_limpio}, creo que puedo aportar desde soporte, QA, "
+        "documentación y desarrollo junior."
+    )
+
+
+def variables_email_para_perfil(
+    perfil_cv: str | None,
+    rubro: str | None,
+) -> dict[str, str]:
+    """Return profile-aware text fragments used by the email templates."""
+    perfil = normalizar_perfil_cv(perfil_cv)
+    return {
+        "linea_encaje": LINEAS_ENCAJE.get(perfil, LINEAS_ENCAJE["CV_IT_QA"]),
+        "detalle_perfil": DETALLES_PERFIL.get(perfil, DETALLES_PERFIL["CV_IT_QA"]),
+        "fortaleza_perfil": FORTALEZAS_PERFIL.get(
+            perfil, FORTALEZAS_PERFIL["CV_IT_QA"]
+        ),
+        "contexto_empresa": contexto_empresa_para_perfil(perfil, rubro),
+    }

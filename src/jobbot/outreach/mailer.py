@@ -30,7 +30,12 @@ from jobbot.db.manager import (
     get_empresas_listas_para_envio,
     registrar_envio,
 )
-from jobbot.outreach.templates import ASUNTOS, CUERPOS, FIRMA_TEMPLATE
+from jobbot.outreach.templates import (
+    CUERPOS,
+    FIRMA_TEMPLATE,
+    asuntos_para_perfil,
+    variables_email_para_perfil,
+)
 
 logger = logging.getLogger("jobbot.mailer")
 
@@ -47,7 +52,6 @@ class ConfigSMTP:
     password:      str
     sender_name:   str
     github_user:   str
-    linkedin_user: str
 
     @classmethod
     def from_env(cls) -> "ConfigSMTP":
@@ -65,7 +69,6 @@ class ConfigSMTP:
             password=os.environ["SMTP_PASS"],
             sender_name=os.getenv("SENDER_NAME", "Alaska"),
             github_user=os.getenv("GITHUB_USER", "tu-usuario"),
-            linkedin_user=os.getenv("LINKEDIN_USER", "tu-perfil"),
         )
 
 
@@ -91,11 +94,11 @@ def _derivar_keywords(perfil_cv: str, rubro: Optional[str]) -> list[str]:
     de CV y el rubro de la empresa, sin requerir datos adicionales en la DB.
 
     La lógica es intencional e independiente del módulo de scoring:
-    mailer.py conoce el perfil final (CV_Tech / CV_Admin_IT / CV_Hybrid) y el rubro
+    mailer.py conoce el perfil final y el rubro
     detectado — con eso alcanza para personalizar el CV en forma útil.
 
     Args:
-        perfil_cv: 'CV_Tech' | 'CV_Admin_IT' | 'CV_Hybrid'
+        perfil_cv: Código de CV actual o legacy
         rubro:     Sector detectado durante el scraping (puede ser None).
 
     Returns:
@@ -116,9 +119,9 @@ def _derivar_keywords(perfil_cv: str, rubro: Optional[str]) -> list[str]:
         "Documentación", "Mejora de procesos",
     ]
 
-    if perfil_cv == "CV_Tech":
+    if perfil_cv in ("CV_Tech", "CV_IT_QA"):
         keywords = base_tech
-    elif perfil_cv == "CV_Hybrid":
+    elif perfil_cv in ("CV_Hybrid", "CV_Ciencia"):
         keywords = base_hybrid
     else:
         keywords = base_admin
@@ -167,9 +170,10 @@ def _derivar_keywords(perfil_cv: str, rubro: Optional[str]) -> list[str]:
 def _seleccionar_indice_template(
     nombre_empresa: str,
     asuntos_usados: set[str],
+    asuntos: tuple[str, ...],
 ) -> int:
     candidatos: list[int] = []
-    for idx, asunto_template in enumerate(ASUNTOS):
+    for idx, asunto_template in enumerate(asuntos):
         asunto_renderizado = _render_template(
             asunto_template,
             nombre_empresa=nombre_empresa,
@@ -178,7 +182,7 @@ def _seleccionar_indice_template(
             candidatos.append(idx)
 
     if not candidatos:
-        candidatos = list(range(len(ASUNTOS)))
+        candidatos = list(range(len(asuntos)))
     return random.choice(candidatos)
 
 
@@ -226,7 +230,7 @@ async def _preparar_adjunto_dinamico(
 
     Args:
         nombre_empresa: Nombre de la empresa (va en la carta y en el filename).
-        perfil_cv:      'CV_Tech' | 'CV_Admin_IT'
+        perfil_cv:      Código de CV actual o legacy
         rubro:          Sector detectado (para enriquecer keywords).
         sender_name:    Nombre del remitente (para el filename).
 
@@ -302,19 +306,25 @@ async def _construir_email(
         nombre_remitente=config.sender_name,
         email_remitente=config.user,
         github_user=config.github_user,
-        linkedin_user=config.linkedin_user,
     )
 
-    template_idx = _seleccionar_indice_template(nombre_empresa, asuntos_usados)
+    asuntos = asuntos_para_perfil(perfil_cv)
+    template_idx = _seleccionar_indice_template(
+        nombre_empresa,
+        asuntos_usados,
+        asuntos,
+    )
     asunto = _render_template(
-        ASUNTOS[template_idx],
+        asuntos[template_idx],
         nombre_empresa=nombre_empresa,
     )
+    variables_perfil = variables_email_para_perfil(perfil_cv, rubro)
     cuerpo = _render_template(
-        CUERPOS[template_idx % len(CUERPOS)],
+        random.choice(CUERPOS),
         nombre_remitente=config.sender_name,
         nombre_empresa=nombre_empresa,
         firma=firma,
+        **variables_perfil,
     )
 
     msg = EmailMessage()
@@ -383,13 +393,12 @@ async def procesar_envios_pendientes(
         return metricas
 
     logger.info("Empresas aptas: %d", len(empresas))
-    es_primer_envio = True
 
     for empresa in empresas:
         empresa_id = empresa["id"]
         nombre     = empresa["nombre"]
         dominio    = empresa["dominio"]
-        perfil_cv  = empresa["perfil_cv"] or "CV_Admin_IT"
+        perfil_cv  = empresa["perfil_cv"] or "CV_IT_QA"
         rubro      = empresa["rubro"]
         score      = empresa["score"]
         metricas["procesadas"] += 1
@@ -454,7 +463,7 @@ async def procesar_envios_pendientes(
             continue
 
         # Rate limiting — asyncio.sleep no bloquea el loop durante el jitter
-        if not es_primer_envio and not dry_run:
+        if not dry_run:
             sleep_seg = random.randint(SMTP_JITTER_MIN_S, SMTP_JITTER_MAX_S)
             logger.info(
                 "Rate limit: %d seg (~%.1f min)…", sleep_seg, sleep_seg / 60
@@ -468,7 +477,6 @@ async def procesar_envios_pendientes(
                 destinatario, asunto_usado[:60], perfil_cv,
             )
             metricas["enviadas"] += 1
-            es_primer_envio = False
             continue
 
         # _enviar_via_smtp es sync (smtplib) → to_thread para no bloquear
@@ -497,8 +505,6 @@ async def procesar_envios_pendientes(
             )
             logger.warning("✗ Fallo de envío | empresa='%s' | to=%s", nombre, destinatario)
             metricas["errores"] += 1
-
-        es_primer_envio = False
 
     logger.info(
         "=== Campaña finalizada | procesadas=%d | enviadas=%d | "

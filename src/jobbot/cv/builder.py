@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Final
 
-from jobbot.cv.profiles import CERTIFICATIONS, CONTACT, EDUCATION, get_profile
+from jobbot.cv.profiles import CONTACT, get_profile
 
 logger = logging.getLogger("jobbot.cv_builder")
 
@@ -27,10 +28,10 @@ PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 TEMPLATE_DIR: Final[Path] = Path(__file__).parent / "templates"
 LEGACY_TEMPLATE_PATH: Final[Path] = PROJECT_ROOT / "cvs" / "template.typ"
 
-# Marcadores textuales que deben existir en la plantilla Typst.
-# Se reemplazan con str.replace() — simple y determinista.
-_MARKER_EMPRESA:  Final[str] = "{{ EMPRESA }}"
-_MARKER_KEYWORDS: Final[str] = "{{ KEYWORDS }}"
+# Marcadores textuales que se reemplazan con str.replace().
+_UNREPLACED_MARKER_RE: Final[re.Pattern[str]] = re.compile(
+    r"\{\{\s*[A-Z_]+\s*\}\}"
+)
 
 # Timeout máximo para que typst termine la compilación (segundos).
 _COMPILE_TIMEOUT_S: Final[float] = 30.0
@@ -124,7 +125,16 @@ def _escape_typst_text(value: str) -> str:
 
 
 def _format_bullets(items: tuple[str, ...]) -> str:
-    return "\n".join(f"- {_escape_typst_text(item)}" for item in items)
+    """Formatea items como texto Typst. Si el item ya contiene markup
+    (newlines, bullets), se inyecta tal cual. Si no, se prefija con '- '."""
+    parts: list[str] = []
+    for item in items:
+        if "\n" in item or item.strip().startswith("-"):
+            # Multi-line content with embedded Typst markup — inject raw
+            parts.append(item)
+        else:
+            parts.append(f"- {item}")
+    return "\n\n".join(parts)
 
 
 def _render_markers(template_raw: str, values: dict[str, str]) -> str:
@@ -141,7 +151,9 @@ def _render_markers(template_raw: str, values: dict[str, str]) -> str:
 async def compilar_cv_dinamico(
     nombre_empresa: str,
     keywords: list[str],
-    perfil_cv: str = "CV_Admin_IT",
+    perfil_cv: str = "CV_IT_QA",
+    puesto_objetivo: str = "",
+    parrafo_empresa: str = "",
 ) -> bytes:
 
     await _verificar_typst()
@@ -180,28 +192,33 @@ async def compilar_cv_dinamico(
         {
             "EMPRESA": _escape_typst_text(nombre_empresa),
             "KEYWORDS": kw_typst,
-            "NOMBRE": _escape_typst_text(CONTACT["nombre"]),
-            "TITULO": _escape_typst_text(profile.title),
-            "UBICACION": _escape_typst_text(CONTACT["ubicacion"]),
-            "EMAIL": _escape_typst_text(CONTACT["email"]),
-            "LINKEDIN": _escape_typst_text(CONTACT["linkedin"]),
-            "PORTFOLIO": _escape_typst_text(CONTACT["portfolio"]),
-            "GITHUB": _escape_typst_text(CONTACT["github"]),
-            "SUMMARY": _escape_typst_text(profile.summary),
+            "NOMBRE": CONTACT["nombre"],
+            "TITULO": profile.title,
+            "UBICACION": CONTACT["ubicacion"],
+            "EMAIL": CONTACT["email"],
+            "TELEFONO": CONTACT["telefono"],
+            "PORTFOLIO": CONTACT["portfolio"],
+            "GITHUB": CONTACT["github"],
+            "SUMMARY": profile.summary,
+            "PROJECTS": _format_bullets(profile.projects),
             "EXPERIENCE": _format_bullets(profile.experience),
             "SKILLS": _format_bullets(profile.skills),
-            "EDUCATION": _format_bullets(EDUCATION),
-            "CERTIFICATIONS": _format_bullets(CERTIFICATIONS),
+            "EDUCATION": _format_bullets(profile.education),
+            "IDIOMAS": profile.idiomas,
+            "FORTALEZAS": _format_bullets(profile.fortalezas),
+            "PUESTO_OBJETIVO": (
+                puesto_objetivo or getattr(profile, 'puesto_objetivo', '')
+            ),
+            "PARRAFO_EMPRESA": parrafo_empresa,
         },
     )
 
-    # Validación superficial: advertir si quedó algún marcador sin reemplazar
-    for marker in (_MARKER_EMPRESA, _MARKER_KEYWORDS):
-        if marker in template_renderizado:
-            logger.warning(
-                "Marcador '%s' no fue reemplazado en la plantilla | empresa='%s'",
-                marker, nombre_empresa,
-            )
+    # Validación superficial: advertir si quedó algún marcador sin reemplazar.
+    for marker in sorted(set(_UNREPLACED_MARKER_RE.findall(template_renderizado))):
+        logger.warning(
+            "Marcador '%s' no fue reemplazado en la plantilla | empresa='%s'",
+            marker, nombre_empresa,
+        )
 
     # Compilación en directorio temporal (autodestruct al salir del bloque)
     with tempfile.TemporaryDirectory(prefix="jobbot_cv_") as tmp_dir:
@@ -209,10 +226,12 @@ async def compilar_cv_dinamico(
         typ_in   = tmp / "cv.typ"
         pdf_out  = tmp / "cv.pdf"
 
-        # --- NUEVO: Copiar la imagen de perfil al directorio temporal ---
-        img_src = PROJECT_ROOT / "cvs" / "perfil.jpg"
-        if img_src.exists():
-            shutil.copy(img_src, tmp / "perfil.jpg")
+        # --- Copiar la imagen de perfil al directorio temporal ---
+        for img_name in ("perfil.webp", "perfil.jpg", "perfil.png"):
+            img_src = PROJECT_ROOT / "cvs" / img_name
+            if img_src.exists():
+                shutil.copy(img_src, tmp / img_name)
+                break
         # ----------------------------------------------------------------
 
         # Escribir plantilla renderizada en el temp dir
